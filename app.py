@@ -39,14 +39,35 @@ app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 def master_path():
     return MASTER_XLSX if os.path.exists(MASTER_XLSX) else MASTER_DOWNLOAD
 
+def _latest_master_backup():
+    """找 _bak 里最新的 master 备份，供主表损坏时兜底。"""
+    import glob
+    cands = glob.glob(os.path.join(BASE, '_bak', 'master*.xlsx'))
+    cands = [c for c in cands if os.path.getsize(c) > 4000]
+    if not cands:
+        return None
+    return max(cands, key=os.path.getmtime)
+
+
 def load_master():
     """读 HS 对照表 → {ERP编码: {hs,name,brand,model,unit,price,gw,nw}}
-    按表头名定位列（用户增删列也不会错位）。"""
+    按表头名定位列（用户增删列也不会错位）。
+
+    若主表读不出来（上传过程中被读到半截、或文件被占用），自动退到最近一次
+    备份，避免整个页面 500。
+    """
     import openpyxl
     p = master_path()
     if not os.path.exists(p):
         return {}
-    wb = openpyxl.load_workbook(p, data_only=True)
+    try:
+        wb = openpyxl.load_workbook(p, data_only=True)
+    except Exception:
+        bak = _latest_master_backup()
+        if not bak:
+            raise RuntimeError('HS 对照表无法读取（%s），且没有可用备份，请在页面上重新上传一份'
+                               % os.path.basename(p))
+        wb = openpyxl.load_workbook(bak, data_only=True)
     ws = wb.active
     header = [str(c.value).strip() if c.value is not None else '' for c in ws[1]]
 
@@ -1656,10 +1677,10 @@ PAGE = r"""<!DOCTYPE html>
     --shadow:0 1px 2px rgba(15,23,42,.04), 0 10px 30px -22px rgba(15,23,42,.25);
   }
   *{box-sizing:border-box}
-  html,body{margin:0}
+  html,body{margin:0;overflow-x:hidden}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
-    background:var(--bg) url('/bg.webp') center center / cover no-repeat fixed;
+    background:var(--bg) url('/bg.webp') center top / cover no-repeat fixed;
     color:var(--ink);
     min-height:100vh;
     -webkit-font-smoothing:antialiased;
@@ -1676,19 +1697,27 @@ PAGE = r"""<!DOCTYPE html>
   }
   .wrap{max-width:860px;margin:0 auto;padding:0 20px;position:relative}
 
+  /* 背景里的机器人单独成层，固定贴在右下角，随窗口大小自动缩放 */
+  .robot{position:fixed;right:-1.5vw;bottom:0;z-index:-1;
+         height:min(80vh, 820px);width:auto;max-width:none;
+         pointer-events:none;user-select:none;
+         -webkit-user-drag:none;
+         filter:drop-shadow(0 18px 40px rgba(38,32,84,.18))}
+
   /* ---------- 顶部 ---------- */
   .topbar{position:relative;padding:54px 0 30px}
   /* 顶部柔光：在紫蓝背景上垫一层白，保证标题与副标题可读 */
-  .topbar::before{content:'';position:absolute;left:50%;top:0;width:140vw;height:230px;
-    transform:translateX(-50%);pointer-events:none;
-    background:radial-gradient(58% 100% at 50% 0%,rgba(255,255,255,.94) 0%,
-               rgba(255,255,255,.62) 46%,rgba(255,255,255,0) 82%)}
+  /* 垂直方向的白雾：贴住标题区自身宽度、不做横向溢出，避免撑出横向滚动条；
+     上下统一是水平等值渐变，左右不会出现切线 */
+  .topbar::before{content:'';position:absolute;inset:-24px 0 0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,.95) 0%,
+               rgba(255,255,255,.80) 46%,rgba(255,255,255,0) 100%)}
   .bar{position:relative}
   .bar{display:flex;align-items:center;gap:16px}
   .logo{width:56px;height:56px;border-radius:50%;flex:0 0 auto;
         box-shadow:0 6px 18px -6px rgba(31,90,255,.55)}
   h1{font-size:24px;font-weight:700;letter-spacing:-.4px;margin:0;line-height:1.22}
-  .tagline{margin:7px 0 0;font-size:13px;color:var(--ink-2)}
+  .tagline{margin:7px 0 0;font-size:13px;color:#3d4a5e;letter-spacing:.1px}
 
   /* ---------- 卡片 ---------- */
   .card{background:rgba(255,255,255,.84);
@@ -1762,9 +1791,23 @@ PAGE = r"""<!DOCTYPE html>
     -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
     border:1px solid rgba(255,255,255,.7)}
 
-  /* 宽屏：内容列略向左偏，把右侧留给背景里的机器人，形成前景/背景层次 */
+  /* 宽屏：内容列略向左偏，把右侧留给机器人，形成前景/背景层次 */
   @media (min-width:1200px){
     .wrap{margin-left:clamp(24px, 5.5vw, 240px);margin-right:auto}
+  }
+  /* 窗口不够宽时机器人退到右下角落，缩小并降低存在感，避免卡片后面透出暗块 */
+  @media (max-width:1199px){
+    .robot{height:min(58vh, 560px);right:-8vw;opacity:.9}
+    .card{background:rgba(255,255,255,.9)}
+  }
+  @media (max-width:820px){
+    .robot{height:44vh;right:-14vw;opacity:.75}
+  }
+  /* 窄屏内容居中，机器人必然被卡片切开成半截，这里加深遮罩，只留柔和的氛围色 */
+  @media (max-width:1199px){
+    body::before{background:linear-gradient(180deg,
+      rgba(248,250,254,.12) 0%,rgba(248,250,254,.50) 40%,
+      rgba(248,250,254,.84) 100%)}
   }
   @media (max-width:620px){
     .topbar{padding:28px 0 22px}
@@ -1776,6 +1819,8 @@ PAGE = r"""<!DOCTYPE html>
 </style>
 </head>
 <body>
+
+<img class="robot" src="/robot.webp" alt="" aria-hidden="true">
 
 <header class="topbar">
   <div class="wrap bar">
@@ -1840,12 +1885,27 @@ drop.ondragleave=()=>drop.classList.remove('hover');
 drop.ondrop=e=>{e.preventDefault();drop.classList.remove('hover');handleFiles(e.dataTransfer.files);};
 fileInput.onchange=e=>handleFiles(e.target.files);
 
+// 服务端出错时可能回 HTML，直接 .json() 会抛「Unexpected token '<'」，这里统一兜底
+async function toJson(res){
+  if(!res) return {ok:false, error:'无法连接本地服务，请确认生成器窗口还在运行'};
+  const text=await res.text();
+  try{ return JSON.parse(text); }
+  catch(e){ return {ok:false, error:'服务端返回了非预期内容（HTTP '+res.status+'），请看生成器窗口的日志'}; }
+}
+
 let masterReady=false;
 
 document.getElementById('masterFile').onchange=async e=>{
   const f=e.target.files[0]; if(!f)return;
+  const box=document.getElementById('masterStatus');
+  if(!/\.xlsx$/i.test(f.name)){
+    box.className='badge err';
+    box.textContent='只能上传 .xlsx 对照表（这次选的是 '+escAttr(f.name)+'）';
+    e.target.value='';
+    return;
+  }
   const fd=new FormData(); fd.append('file',f);
-  const r=await fetch('/master/upload',{method:'POST',body:fd}).then(x=>x.json());
+  const r=await toJson(await fetch('/master/upload',{method:'POST',body:fd}).catch(()=>null));
   const s=document.getElementById('masterStatus');
   if(r.ok){
     masterReady=true;
@@ -1869,7 +1929,7 @@ async function handleFiles(files){
     list.innerHTML='<span class="muted">正在解析 '+(i+1)+'/'+filesArr.length+' · '+escAttr(f.name)+'</span>';
     try{
       const fd=new FormData(); fd.append('file',f);
-      const r=await fetch('/parse',{method:'POST',body:fd}).then(x=>x.json());
+      const r=await toJson(await fetch('/parse',{method:'POST',body:fd}).catch(()=>null));
       results.push({name:f.name, data:r});
     }catch(e){
       results.push({name:f.name, data:{ok:false, error:String(e&&e.message||e)}});
@@ -1953,7 +2013,7 @@ async function generate(token, name){
 async function openOutput(){
   try{
     const r=await fetch('/open_output');
-    const d=await r.json();
+    const d=await toJson(r);
     if(!d.ok) alert('无法自动打开，请手动前往：'+d.path);
   }catch(e){ alert('无法自动打开输出文件夹'); }
 }
@@ -1962,8 +2022,19 @@ async function openOutput(){
 </html>
 """
 
+@app.errorhandler(Exception)
+def _json_error(e):
+    """任何未捕获的异常都回 JSON，前端就不会拿到 HTML 报 "Unexpected token '<'"。"""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    app.logger.exception('unhandled error')
+    return jsonify({'ok': False, 'error': '%s: %s' % (type(e).__name__, e)}), 500
+
+
 LOGO = os.path.join(BASE, 'logo.png')
-BACKDROP = os.path.join(BASE, 'bg-robot.webp')
+BACKDROP = os.path.join(BASE, 'bg-sky.webp')
+ROBOT = os.path.join(BASE, 'robot.webp')
 
 
 @app.route('/logo.png')
@@ -1973,13 +2044,22 @@ def logo_file():
     return send_file(LOGO, mimetype='image/png')
 
 
-@app.route('/bg.webp')
-def bg_file():
-    if not os.path.exists(BACKDROP):
+def _send_webp(path):
+    if not os.path.exists(path):
         return '', 404
-    r = send_file(BACKDROP, mimetype='image/webp', conditional=True)
+    r = send_file(path, mimetype='image/webp', conditional=True)
     r.headers['Cache-Control'] = 'public, max-age=86400'
     return r
+
+
+@app.route('/bg.webp')
+def bg_file():
+    return _send_webp(BACKDROP)
+
+
+@app.route('/robot.webp')
+def robot_file():
+    return _send_webp(ROBOT)
 
 
 @app.route('/')
@@ -1993,6 +2073,54 @@ def master_export():
         return jsonify({'ok': False, 'error': '对照表文件不存在'}), 404
     return send_file(p, as_attachment=True, download_name='HS对照表_待填.xlsx')
 
+def _check_master_xlsx(path):
+    """校验上传的对照表是不是真的 xlsx。
+
+    之前有人把 PDF 拖到「上传已填对照表」上，生成的坏文件直接覆盖了
+    master.xlsx，之后每次解析都 500。这里先验后覆盖：不是 Excel、或者
+    表头/数据行对不上，就拒绝，原表保持不动。
+    """
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True)
+    except Exception:
+        return False, '这不是有效的 Excel 文件（需要 .xlsx）'
+    ws = wb.worksheets[0] if wb.worksheets else None
+    if ws is None:
+        return False, 'Excel 里没有工作表'
+    head = ''
+    for c in next(ws.iter_rows(min_row=1, max_row=1), []):
+        head += (str(c.value).lower() if c.value is not None else '') + ' '
+    if not any(k in head for k in ('erp', '商品编码', '编码')):
+        return False, '表头不像对照表（第一行应有「ERP商品编码」列）'
+    rows = sum(1 for r in ws.iter_rows(min_row=2, values_only=True)
+               if r and str(r[0]).strip() not in ('', 'None'))
+    if rows == 0:
+        return False, '对照表里没有任何数据行'
+    return True, ''
+
+
+@app.errorhandler(Exception)
+def _json_errors(e):
+    """接口一律回 JSON，避免前端拿到 HTML 报「Unexpected token '<'」。"""
+    from werkzeug.exceptions import HTTPException
+    api = request.path.startswith(('/parse', '/generate', '/master', '/open_output'))
+    if isinstance(e, HTTPException):
+        if api:
+            return jsonify({'ok': False, 'error': '%s %s' % (e.code, e.name)}), e.code
+        return e
+    app.logger.exception(e)
+    if api:
+        return jsonify({'ok': False, 'error': '%s: %s' % (type(e).__name__, e)}), 500
+    return '页面内部错误，请查看生成器窗口的日志', 500
+
+
+@app.after_request
+def _no_store_page(r):
+    if request.path in ('/', '/index'):
+        r.headers['Cache-Control'] = 'no-store, must-revalidate'
+    return r
+
+
 @app.route('/master/upload', methods=['POST'])
 def master_upload():
     f = request.files.get('file')
@@ -2000,8 +2128,24 @@ def master_upload():
         return jsonify({'ok': False, 'error': '无文件'})
     src = os.path.join(UPLOAD, 'master_upload.xlsx')
     f.save(src)
+    ok, why = _check_master_xlsx(src)
+    if not ok:
+        try:
+            os.remove(src)
+        except OSError:
+            pass
+        return jsonify({'ok': False, 'error': why + '，已忽略，原对照表未改动'})
     try:
-        shutil.copy2(src, MASTER_XLSX)
+        # 先备份旧表，再原子替换：避免解析请求读到写了一半的文件
+        if os.path.exists(MASTER_XLSX):
+            try:
+                shutil.copy2(MASTER_XLSX, os.path.join(
+                    BASE, '_bak', 'master_%s.xlsx' % datetime.datetime.now().strftime('%Y%m%d_%H%M%S')))
+            except Exception:
+                pass
+        tmp = MASTER_XLSX + '.tmp'
+        shutil.copy2(src, tmp)
+        os.replace(tmp, MASTER_XLSX)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
     m = load_master()
@@ -2016,12 +2160,19 @@ def parse():
     name = f.filename
     pdf = os.path.join(UPLOAD, 'latest.pdf')
     f.save(pdf)
+    with open(pdf, 'rb') as fh:
+        if fh.read(5) != b'%PDF-':
+            return jsonify({'ok': False, 'error': '这不是 PDF 文件，请确认拖的是销售订单 PDF'})
     try:
         md = extract_md(pdf)
         hdr, items = parse_order(md)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
-    master = load_master()
+    try:
+        master = load_master()
+    except Exception:
+        return jsonify({'ok': False,
+                        'error': '对照表 master.xlsx 已损坏或不是 Excel，请重新上传对照表'})
     bnames = bom_names()
     # 匹配 HS；品名以 PDF 为准（与报关单一致），PDF 取不到时用 BOM 兜底
     for it in items:
