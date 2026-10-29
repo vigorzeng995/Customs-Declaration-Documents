@@ -1723,7 +1723,10 @@ PAGE = r"""<!DOCTYPE html>
   .badge.err{background:var(--red-bg);color:var(--red)}
 
   /* ---------- 按钮 ---------- */
-  .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;
+  /* position:relative 必须有：按钮里那个透明的 file input 是 absolute+100%，
+     没有它就会以 .wrap 为基准铺满整个主区域，把其它控件（含透明度滑杆）的点击全吃掉 */
+  .btn{position:relative;overflow:hidden;
+       display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;
        border:1px solid transparent;font-size:13.5px;font-weight:600;cursor:pointer;
        text-decoration:none;transition:.16s;font-family:inherit;line-height:1.2}
   .btn-ghost{background:#fff;border-color:var(--line);color:var(--ink)}
@@ -1782,16 +1785,28 @@ PAGE = r"""<!DOCTYPE html>
     -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
     border:1px solid rgba(255,255,255,.7)}
 
-  /* 透明度滑杆：与按钮同一行，宽度自适应 */
-  .opwrap{display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-2);
-          padding:9px 4px;white-space:nowrap}
-  .opwrap input[type=range]{-webkit-appearance:none;appearance:none;width:150px;height:4px;
-          border-radius:3px;background:#dbe4f3;outline:none;accent-color:var(--blue);cursor:pointer}
-  .opwrap input[type=range]:disabled{background:#eef1f6;cursor:not-allowed}
+  /* 透明度滑杆：与按钮同一行。没有背景图时整行隐藏，换一句提示，
+     免得出现一根拖不动的灰滑杆让人以为坏了 */
+  .actions .opwrap{display:none;align-items:center;gap:10px;font-size:13px;color:var(--ink-2);
+          padding:6px 4px;white-space:nowrap}
+  .actions.has-img .opwrap{display:inline-flex}
+  .ophint{display:none;font-size:12.5px;color:var(--ink-3);padding:9px 2px}
+  .actions:not(.has-img) .ophint{display:inline-flex;align-items:center}
+  /* 轨道 4px，但控件本身留 20px 高，鼠标好点中、好拖 */
+  .opwrap input[type=range]{-webkit-appearance:none;appearance:none;width:150px;height:20px;margin:0;
+          background:transparent;outline:none;cursor:pointer}
+  .opwrap input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:3px;background:#dbe4f3}
   .opwrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;
-          border-radius:50%;background:var(--blue);border:2px solid #fff;
+          margin-top:-5.5px;border-radius:50%;background:var(--blue);border:2px solid #fff;
           box-shadow:0 2px 6px rgba(31,90,255,.45);cursor:pointer}
-  .opwrap input[type=range]:disabled::-webkit-slider-thumb{background:#c6cede;box-shadow:none}
+  .opwrap input[type=range]:disabled::-webkit-slider-runnable-track{background:#eef1f6}
+  .opwrap input[type=range]:disabled::-webkit-slider-thumb{background:#c6cede;box-shadow:none;cursor:not-allowed}
+  /* 同一套样式给 Firefox，免得换了浏览器滑杆整根消失 */
+  .opwrap input[type=range]::-moz-range-track{height:4px;border-radius:3px;background:#dbe4f3}
+  .opwrap input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;
+          background:var(--blue);border:2px solid #fff;box-shadow:0 2px 6px rgba(31,90,255,.45)}
+  .opwrap input[type=range]:disabled::-moz-range-track{background:#eef1f6}
+  .opwrap input[type=range]:disabled::-moz-range-thumb{background:#c6cede;box-shadow:none}
   .opval{min-width:38px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
 
   @media (max-width:620px){
@@ -1846,13 +1861,14 @@ PAGE = r"""<!DOCTYPE html>
     <p class="desc">
       默认是纯白底。想换就上传一张自己的图片（JPG / PNG / WebP，≤ 12 MB），再用滑杆调浓淡；图片只保存在本机。
     </p>
-    <div class="actions">
+    <div class="actions__BG_HASIMG__" id="bgActions">
       <label class="btn btn-ghost">
         选择背景图片
         <input type="file" id="bgFile" accept="image/jpeg,image/png,image/webp,image/gif"
                style="position:absolute;left:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer;">
       </label>
       <button class="btn btn-ghost" id="bgReset" type="button">恢复默认（白底）</button>
+      <span class="ophint" id="opHint">选择图片后可调浓淡</span>
       <label class="opwrap" title="100% 为原图，数值越低背景越淡">
         <span>背景不透明度</span>
         <input type="range" id="bgOp" min="0" max="100" step="5" value="__BG_OP_PCT__"__BG_OP_DIS__>
@@ -2038,12 +2054,15 @@ function bgBadge(cls,text){ bgStatus.className='badge'+(cls?' '+cls:''); bgStatu
 
 // url 为空 = 没有背景图，回到纯白底
 function setBg(url){
+  const box=document.getElementById('bgActions');
   if(url){
     bgLayer.style.backgroundImage="url('"+String(url).replace(/['"()\\\s]/g,'')+"')";
     bgOp.disabled=false;
+    if(box) box.classList.add('has-img');     // 有图才把滑杆放出来
   }else{
     bgLayer.style.backgroundImage='none';
     bgOp.disabled=true;
+    if(box) box.classList.remove('has-img');  // 白底时换成提示，不留灰滑杆
   }
 }
 function setOp(p){
@@ -2398,6 +2417,7 @@ def index():
                 .replace('__BG_OP__', ('%.2f' % op) if url else '0')
                 .replace('__BG_OP_PCT__', str(pct))
                 .replace('__BG_OP_DIS__', '' if url else ' disabled')
+                .replace('__BG_HASIMG__', ' has-img' if custom else '')
                 .replace('__BG_CLASS__', ' ok' if custom else '')
                 .replace('__BG_TEXT__', '自定义背景' if custom else '纯白底'))
     return page
