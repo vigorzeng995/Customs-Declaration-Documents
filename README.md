@@ -7,8 +7,8 @@ Built for the routine where every shipment shares the same buyer/seller and only
 line items, invoice number and contract number change.
 
 The interface is in Chinese, matching the declaration paperwork it produces.
-All images (`logo.png`, `bg-sky.webp`, `robot.webp`) are decorative: delete them and the page still works
-(a flat light background is used instead).
+The page is plain white; the only image it ever shows is your own background, if you
+upload one. `logo.png` is the header mark and can be swapped or deleted.
 
 ## What it does
 
@@ -52,14 +52,16 @@ On Windows you can also double-click `启动.bat` (starts the server and opens t
 
 ## Changing the background
 
-The **页面外观** card on the page lets you use your own picture as the background
-(JPG / PNG / WebP / GIF, up to 12 MB), and hide or show the robot in the corner.
+The page is plain white by default — no built-in artwork. The **页面外观** card lets you
+put your own picture behind the cards (JPG / PNG / WebP / GIF, up to 12 MB) and fade it
+with the opacity slider, so text stays readable on a busy photo.
 
 - The image is never sent anywhere: it is validated by its real file signature (not the
   extension), auto-rotated by EXIF, capped at 2560 px on the long side, flattened onto
   white if it has transparency, and stored as `custom_bg.webp` next to `app.py`.
-- The choice is remembered in `appearance.json` (both git-ignored, both local only).
-- **恢复默认背景** deletes them and returns to `bg-sky.webp`.
+- The picture and its opacity are remembered in `appearance.json` (both git-ignored,
+  both local only).
+- **恢复默认（白底）** deletes them and returns to the plain white page.
 - Bad input (not an image, truncated file, >12 MB, >60 megapixels, SVG) is rejected with a
   readable message and leaves the previous background untouched.
 - Pillow is optional: without it the file is stored as-is instead of being compressed.
@@ -104,10 +106,9 @@ base_template.xlsx            Legacy template, kept for the old code path
 master.example.xlsx           Sanitized lookup sample (7 columns)
 HS对照表_待填.example.xlsx      Sanitized lookup sample (9 columns)
 logo.png                      Brand mark shown in the page header (swap for your own)
-bg-sky.webp                   Background gradient behind the page (optional)
-robot.webp                    Robot cut-out pinned to the bottom-right corner (optional)
 custom_bg.webp                User-uploaded background, created at runtime (git-ignored)
-appearance.json               Background / robot preference, created at runtime (git-ignored)
+appearance.json               Background / opacity preference, created at runtime (git-ignored)
+bg-sky.webp, robot.webp       Artwork from the earlier full-bleed theme, no longer used
 启动.bat                       Windows one-click launcher
 requirements.txt
 ```

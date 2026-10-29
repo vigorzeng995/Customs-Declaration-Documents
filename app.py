@@ -1680,38 +1680,24 @@ PAGE = r"""<!DOCTYPE html>
   html,body{margin:0;overflow-x:hidden}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
-    background:var(--bg) url('__BG_URL__') center top / cover no-repeat fixed;
+    background:#fff;              /* 默认纯白：没有任何内置底图 */
     color:var(--ink);
     min-height:100vh;
     -webkit-font-smoothing:antialiased;
   }
-  /* 背景压一层浅色雾，保证顶部标题与卡片始终清晰；越往下越不透，机器人若隐若现 */
-  body::before{
-    content:'';position:fixed;inset:0;pointer-events:none;
-    background:linear-gradient(180deg,
-      rgba(248,250,254,.08) 0%,
-      rgba(248,250,254,.26) 30%,
-      rgba(248,250,254,.42) 58%,
-      rgba(248,250,254,.74) 84%,
-      rgba(248,250,254,.94) 100%);
-  }
+  /* 背景图单独一层，铺满整屏；透明度由滑杆控制，没上传图时这一层是空的 */
+  .bgimg{position:fixed;inset:0;z-index:-1;pointer-events:none;
+         background-position:center top;background-size:cover;background-repeat:no-repeat;
+         transition:opacity .18s ease}
   .wrap{max-width:860px;margin:0 auto;padding:0 20px;position:relative}
-
-  /* 背景里的机器人单独成层，固定贴在右下角，随窗口大小自动缩放 */
-  .robot{position:fixed;right:-1.5vw;bottom:0;z-index:-1;
-         height:min(80vh, 820px);width:auto;max-width:none;
-         pointer-events:none;user-select:none;
-         -webkit-user-drag:none;
-         filter:drop-shadow(0 18px 40px rgba(38,32,84,.18))}
 
   /* ---------- 顶部 ---------- */
   .topbar{position:relative;padding:54px 0 30px}
-  /* 顶部柔光：在紫蓝背景上垫一层白，保证标题与副标题可读 */
-  /* 垂直方向的白雾：贴住标题区自身宽度、不做横向溢出，避免撑出横向滚动条；
-     上下统一是水平等值渐变，左右不会出现切线 */
+  /* 顶部柔光：自定义背景上垫一层白，保证标题与副标题始终可读；
+     贴住标题区自身宽度、不做横向溢出，避免撑出横向滚动条 */
   .topbar::before{content:'';position:absolute;inset:-24px 0 0;pointer-events:none;
-    background:linear-gradient(180deg,rgba(255,255,255,.95) 0%,
-               rgba(255,255,255,.80) 46%,rgba(255,255,255,0) 100%)}
+    background:linear-gradient(180deg,rgba(255,255,255,.92) 0%,
+               rgba(255,255,255,.72) 46%,rgba(255,255,255,0) 100%)}
   .bar{position:relative}
   .bar{display:flex;align-items:center;gap:16px}
   .logo{width:56px;height:56px;border-radius:50%;flex:0 0 auto;
@@ -1720,12 +1706,13 @@ PAGE = r"""<!DOCTYPE html>
   .tagline{margin:7px 0 0;font-size:13px;color:#3d4a5e;letter-spacing:.1px}
 
   /* ---------- 卡片 ---------- */
-  .card{background:rgba(255,255,255,.84);
-        -webkit-backdrop-filter:blur(18px) saturate(1.25);
-        backdrop-filter:blur(18px) saturate(1.25);
-        border:1px solid rgba(255,255,255,.85);border-radius:var(--r);
+  .card{background:rgba(255,255,255,.86);
+        -webkit-backdrop-filter:blur(16px) saturate(1.2);
+        backdrop-filter:blur(16px) saturate(1.2);
+        /* 白底上要看得见卡片轮廓，所以边框用极浅的墨色；有背景图时同样成立 */
+        border:1px solid rgba(15,23,42,.07);border-radius:var(--r);
         padding:22px 24px;margin-bottom:16px;
-        box-shadow:0 1px 2px rgba(15,23,42,.04), 0 18px 44px -28px rgba(15,23,42,.35)}
+        box-shadow:0 1px 2px rgba(15,23,42,.04), 0 18px 44px -30px rgba(15,23,42,.30)}
   .card-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
   h2{font-size:15.5px;font-weight:600;margin:0;letter-spacing:.1px}
   .desc{font-size:13px;color:var(--ink-2);line-height:1.7;margin:0 0 16px}
@@ -1795,36 +1782,31 @@ PAGE = r"""<!DOCTYPE html>
     -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
     border:1px solid rgba(255,255,255,.7)}
 
-  /* 宽屏：内容列略向左偏，把右侧留给机器人，形成前景/背景层次 */
-  @media (min-width:1200px){
-    .wrap{margin-left:clamp(24px, 5.5vw, 240px);margin-right:auto}
-  }
-  /* 窗口不够宽时机器人退到右下角落，缩小并降低存在感，避免卡片后面透出暗块 */
-  @media (max-width:1199px){
-    .robot{height:min(58vh, 560px);right:-8vw;opacity:.9}
-    .card{background:rgba(255,255,255,.9)}
-  }
-  @media (max-width:820px){
-    .robot{height:44vh;right:-14vw;opacity:.75}
-  }
-  /* 窄屏内容居中，机器人必然被卡片切开成半截，这里加深遮罩，只留柔和的氛围色 */
-  @media (max-width:1199px){
-    body::before{background:linear-gradient(180deg,
-      rgba(248,250,254,.12) 0%,rgba(248,250,254,.50) 40%,
-      rgba(248,250,254,.84) 100%)}
-  }
+  /* 透明度滑杆：与按钮同一行，宽度自适应 */
+  .opwrap{display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-2);
+          padding:9px 4px;white-space:nowrap}
+  .opwrap input[type=range]{-webkit-appearance:none;appearance:none;width:150px;height:4px;
+          border-radius:3px;background:#dbe4f3;outline:none;accent-color:var(--blue);cursor:pointer}
+  .opwrap input[type=range]:disabled{background:#eef1f6;cursor:not-allowed}
+  .opwrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;
+          border-radius:50%;background:var(--blue);border:2px solid #fff;
+          box-shadow:0 2px 6px rgba(31,90,255,.45);cursor:pointer}
+  .opwrap input[type=range]:disabled::-webkit-slider-thumb{background:#c6cede;box-shadow:none}
+  .opval{min-width:38px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+
   @media (max-width:620px){
     .topbar{padding:28px 0 22px}
     h1{font-size:18px}
     .logo{width:46px;height:46px}
     .card{padding:18px 16px}
     .wrap{padding:0 14px}
+    .opwrap input[type=range]{width:120px}
   }
 </style>
 </head>
 <body>
 
-<img class="robot" src="/robot.webp" alt="" aria-hidden="true" style="__ROBOT_STYLE__">
+<div class="bgimg" id="bgLayer" style="background-image:__BG_IMG__;opacity:__BG_OP__"></div>
 
 <header class="topbar">
   <div class="wrap bar">
@@ -1862,7 +1844,7 @@ PAGE = r"""<!DOCTYPE html>
       <span class="badge__BG_CLASS__" id="bgStatus">__BG_TEXT__</span>
     </div>
     <p class="desc">
-      想换背景就上传一张自己的图片（JPG / PNG / WebP，≤ 12 MB），自动压缩并保存在本机，下次打开仍然有效。
+      默认是纯白底。想换就上传一张自己的图片（JPG / PNG / WebP，≤ 12 MB），再用滑杆调浓淡；图片只保存在本机。
     </p>
     <div class="actions">
       <label class="btn btn-ghost">
@@ -1870,10 +1852,11 @@ PAGE = r"""<!DOCTYPE html>
         <input type="file" id="bgFile" accept="image/jpeg,image/png,image/webp,image/gif"
                style="position:absolute;left:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer;">
       </label>
-      <button class="btn btn-ghost" id="bgReset" type="button">恢复默认背景</button>
-      <label class="cbtoggle" title="隐藏右下角的四足机器人">
-        <input type="checkbox" id="robotToggle"__ROBOT_CHECKED__>
-        <span>显示四足机器人</span>
+      <button class="btn btn-ghost" id="bgReset" type="button">恢复默认（白底）</button>
+      <label class="opwrap" title="100% 为原图，数值越低背景越淡">
+        <span>背景不透明度</span>
+        <input type="range" id="bgOp" min="0" max="100" step="5" value="__BG_OP_PCT__"__BG_OP_DIS__>
+        <span class="opval" id="opVal">__BG_OP_PCT__%</span>
       </label>
     </div>
   </section>
@@ -2044,15 +2027,43 @@ async function openOutput(){
   }catch(e){ alert('无法自动打开输出文件夹'); }
 }
 
-/* ================= 页面外观：自定义背景 / 机器人开关 ================= */
+/* ================= 页面外观：自定义背景 / 不透明度 ================= */
 const bgStatus=document.getElementById('bgStatus');
+const bgLayer=document.getElementById('bgLayer');
+const bgOp=document.getElementById('bgOp');
+const opVal=document.getElementById('opVal');
 const BG_MAX=12*1024*1024;
 
-function setBg(url){
-  if(!url) return;
-  document.body.style.backgroundImage="url('"+String(url).replace(/['"()\\\s]/g,'')+"')";
-}
 function bgBadge(cls,text){ bgStatus.className='badge'+(cls?' '+cls:''); bgStatus.textContent=text; }
+
+// url 为空 = 没有背景图，回到纯白底
+function setBg(url){
+  if(url){
+    bgLayer.style.backgroundImage="url('"+String(url).replace(/['"()\\\s]/g,'')+"')";
+    bgOp.disabled=false;
+  }else{
+    bgLayer.style.backgroundImage='none';
+    bgOp.disabled=true;
+  }
+}
+function setOp(p){
+  p=Math.max(0,Math.min(100,Math.round(+p||0)));
+  bgOp.value=p;
+  bgLayer.style.opacity=p/100;
+  opVal.textContent=p+'%';
+}
+async function saveOp(p){
+  try{
+    const fd=new FormData(); fd.append('op',String(p/100));
+    const r=await toJson(await fetch('/appearance/opacity',{method:'POST',body:fd}).catch(()=>null));
+    if(!r||!r.ok) bgBadge('err','不透明度没保存成功，下次打开会恢复原值');
+  }catch(err){
+    bgBadge('err','不透明度没保存成功，下次打开会恢复原值');
+  }
+}
+// 拖动时实时预览，松手才写盘，避免每移动一格就发一次请求
+bgOp.oninput=function(){ setOp(this.value); };
+bgOp.onchange=function(){ saveOp(+this.value); };
 
 document.getElementById('bgFile').onchange=async e=>{
   const f=e.target.files&&e.target.files[0];
@@ -2067,6 +2078,8 @@ document.getElementById('bgFile').onchange=async e=>{
     const r=await toJson(await fetch('/appearance/background',{method:'POST',body:fd}).catch(()=>null));
     if(r&&r.ok){
       setBg(r.url);
+      // 服务端可能把「调到几乎看不见」的旧值拉回满，这里同步一下滑杆
+      setOp(r.opacity==null?100:Math.round(r.opacity*100));
       bgBadge('ok','已换背景'+(r.w?('（'+r.w+'×'+r.h+'）'):''));
     }else{
       bgBadge('err','上传失败：'+((r&&r.error)||'未知错误'));
@@ -2082,21 +2095,11 @@ document.getElementById('bgReset').onclick=async function(){
   const btn=this; btn.disabled=true; bgBadge('','正在恢复…');
   try{
     const r=await toJson(await fetch('/appearance/background/reset',{method:'POST'}).catch(()=>null));
-    if(r&&r.ok){ setBg(r.url); bgBadge('','已恢复默认背景'); }
+    if(r&&r.ok){ setBg(null); setOp(100); bgBadge('','纯白底'); }
     else{ bgBadge('err','恢复失败：'+((r&&r.error)||'未知错误')); }
   }catch(err){
     bgBadge('err','恢复失败：'+String(err&&err.message||err));
   }finally{ btn.disabled=false; }
-};
-
-document.getElementById('robotToggle').onchange=async function(){
-  const on=this.checked;
-  document.querySelectorAll('.robot').forEach(el=>{ el.style.display=on?'':'none'; });
-  try{
-    const fd=new FormData(); fd.append('on',on?'1':'0');
-    const r=await toJson(await fetch('/appearance/robot',{method:'POST',body:fd}).catch(()=>null));
-    if(!r||!r.ok) bgBadge('err','开关没保存成功，下次打开会恢复原状态');
-  }catch(err){}
 };
 </script>
 </body>
@@ -2114,30 +2117,36 @@ def _json_error(e):
 
 
 LOGO = os.path.join(BASE, 'logo.png')
-BACKDROP = os.path.join(BASE, 'bg-sky.webp')
-ROBOT = os.path.join(BASE, 'robot.webp')
 
-# ---------- 外观（自定义背景 / 机器人开关） ----------
+# ---------- 外观（自定义背景 / 不透明度） ----------
+# 默认纯白底，没有任何内置底图：屏幕上出现的背景只可能是用户自己上传的那张。
 # 单独存 appearance.json，不去动 local_config.json，互不影响：写坏了也只丢外观设置。
 LOOK_FILE = os.path.join(BASE, 'appearance.json')
-LOOK_KEYS = ('bg', 'robot')
+LOOK_KEYS = ('bg', 'opacity')
 BG_EXTS = ('.webp', '.jpg', '.jpeg', '.png', '.gif')
 BG_MAX_IN = 12 * 1024 * 1024        # 允许上传的原始大小
 BG_MAX_PX = 60 * 1024 * 1024        # 像素总量上限，防「解压炸弹」
 BG_MAX_SIDE = 2560                  # 落盘时长边上限（铺满屏幕足够，体积可控）
+BG_MIN_OP, BG_MAX_OP = 0.0, 1.0
+
+
+def _clamp_op(v):
+    try:
+        return max(BG_MIN_OP, min(BG_MAX_OP, float(v)))
+    except (TypeError, ValueError):
+        return 1.0
 
 
 def _look():
     """读外观配置。文件缺失、JSON 损坏、字段非法一律退回默认值，绝不影响页面打开。"""
-    d = {'bg': '', 'robot': True}
+    d = {'bg': '', 'opacity': 1.0}
     try:
         if os.path.exists(LOOK_FILE):
             raw = json.load(open(LOOK_FILE, encoding='utf-8'))
             if isinstance(raw, dict):
                 bg = raw.get('bg')
                 d['bg'] = bg if _bg_name_ok(bg) else ''
-                rb = raw.get('robot')
-                d['robot'] = rb if isinstance(rb, bool) else True
+                d['opacity'] = _clamp_op(raw.get('opacity', 1.0))
     except Exception:
         pass
     return d
@@ -2176,17 +2185,14 @@ def _bg_custom_path():
 
 
 def _bg_path():
-    """当前生效的背景：自定义优先，缺失时自动退回内置默认图。"""
-    p = _bg_custom_path()
-    if p:
-        return p
-    return BACKDROP if os.path.isfile(BACKDROP) else ''
+    """当前生效的背景：只有用户上传的那张，没有就返回空（页面是白底）。"""
+    return _bg_custom_path()
 
 
 def _bg_url():
     p = _bg_path()
     if not p:
-        return '/bg.webp'
+        return ''
     try:
         v = int(os.path.getmtime(p))
     except OSError:
@@ -2297,8 +2303,14 @@ def _save_bg_bytes(data):
 
     if not _look_set(bg=name):
         return False, '图片已保存，但外观配置写入失败，请检查目录权限'
+    op = _look()['opacity']
+    if op < 0.3:
+        # 上一张被调到很淡，换新图时自动回到满，否则用户会以为没生效
+        op = 1.0
+        _look_set(opacity=op)
     info['bytes'] = os.path.getsize(dst)
     info['url'] = _bg_url()
+    info['opacity'] = op
     return True, info
 
 
@@ -2307,14 +2319,6 @@ def logo_file():
     if not os.path.exists(LOGO):
         return '', 404
     return send_file(LOGO, mimetype='image/png')
-
-
-def _send_webp(path):
-    if not os.path.exists(path):
-        return '', 404
-    r = send_file(path, mimetype='image/webp', conditional=True)
-    r.headers['Cache-Control'] = 'public, max-age=86400'
-    return r
 
 
 @app.route('/bg.webp')
@@ -2337,7 +2341,18 @@ def bg_file():
 def appearance_state():
     d = _look()
     return jsonify({'ok': True, 'custom': bool(_bg_custom_path()),
-                    'robot': d['robot'], 'url': _bg_url()})
+                    'opacity': d['opacity'], 'url': _bg_url()})
+
+
+@app.route('/appearance/opacity', methods=['POST'])
+def appearance_opacity():
+    try:
+        op = _clamp_op(request.form.get('op'))
+    except Exception:
+        op = 1.0
+    if not _look_set(opacity=op):
+        return jsonify({'ok': False, 'error': '保存设置失败，请检查目录权限'})
+    return jsonify({'ok': True, 'opacity': op})
 
 
 @app.route('/appearance/background', methods=['POST'])
@@ -2368,33 +2383,23 @@ def appearance_bg_reset():
                 os.remove(os.path.join(BASE, f))
             except OSError:
                 pass
-    _look_set(bg='')
-    return jsonify({'ok': True, 'url': _bg_url()})
-
-
-@app.route('/appearance/robot', methods=['POST'])
-def appearance_robot():
-    on = (request.form.get('on') or '').lower() in ('1', 'true', 'yes', 'on')
-    if not _look_set(robot=on):
-        return jsonify({'ok': False, 'error': '保存设置失败，请检查目录权限'})
-    return jsonify({'ok': True, 'robot': on})
-
-
-@app.route('/robot.webp')
-def robot_file():
-    return _send_webp(ROBOT)
+    _look_set(bg='', opacity=1.0)
+    return jsonify({'ok': True, 'url': '', 'opacity': 1.0})
 
 
 @app.route('/')
 def index():
     look = _look()
-    robot = look['robot']
-    custom = bool(_bg_custom_path())
-    page = (PAGE.replace('__BG_URL__', _bg_url())
-                .replace('__ROBOT_STYLE__', '' if robot else 'display:none')
-                .replace('__ROBOT_CHECKED__', ' checked' if robot else '')
+    url = _bg_url()
+    custom = bool(url)
+    op = look['opacity']
+    pct = int(round(op * 100))
+    page = (PAGE.replace('__BG_IMG__', ("url('%s')" % url) if url else 'none')
+                .replace('__BG_OP__', ('%.2f' % op) if url else '0')
+                .replace('__BG_OP_PCT__', str(pct))
+                .replace('__BG_OP_DIS__', '' if url else ' disabled')
                 .replace('__BG_CLASS__', ' ok' if custom else '')
-                .replace('__BG_TEXT__', '使用自定义背景' if custom else '默认背景'))
+                .replace('__BG_TEXT__', '自定义背景' if custom else '纯白底'))
     return page
 
 @app.route('/master/export')
