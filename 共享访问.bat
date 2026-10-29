@@ -1,12 +1,19 @@
 @echo off
 setlocal enabledelayedexpansion
-title Shared mode - LAN only - close this window to stop
+title Customs Doc Generator - SHARED MODE (LAN) - close this window to stop
 cd /d "%~dp0"
 set PORT=8765
 set ODIN_HOST=0.0.0.0
+set RULENAME=CustomsDoc8765
 
-rem NOTE: keep this file pure ASCII. cmd reads .bat in the OEM codepage, and
-rem non-ASCII bytes get garbled into broken commands.
+rem NOTE: keep this file pure ASCII. cmd reads .bat in the OEM codepage,
+rem and non-ASCII bytes get garbled into broken commands.
+
+echo ============================================================
+echo   Customs Doc Generator - SHARED MODE
+echo   Other people on the same network can open this tool.
+echo ============================================================
+echo.
 
 rem ---- 1. find a python that can really import our dependencies ----
 rem The bare name "python" often points at the Microsoft Store stub, which
@@ -26,7 +33,6 @@ if not defined PY (
     python -c "import flask,openpyxl,PIL" >nul 2>nul && set "PY=python"
 )
 if not defined PY (
-    echo.
     echo [ERROR] No usable Python found ^(needs flask, openpyxl and Pillow^).
     echo.
     echo   1. Install Python 3 from https://www.python.org/downloads/
@@ -38,33 +44,51 @@ if not defined PY (
     pause
     exit /b 1
 )
-echo Using Python: %PY%
+echo [1/3] Python OK: %PY%
 echo.
 
-rem ---- 2. already listening? do not start a second instance ----
+rem ---- 2. make sure the port is reachable from other machines ----
+rem The current network is often "Public", where Windows blocks inbound by
+rem default. Adding the rule needs admin rights, so we ask for it once.
+netsh advfirewall firewall show rule name="%RULENAME%" >nul 2>nul
+if errorlevel 1 (
+    echo [2/3] First run: allowing port %PORT% in Windows Firewall.
+    echo       A permission prompt will pop up - please click YES.
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath netsh -Verb RunAs -Wait -ArgumentList 'advfirewall firewall add rule name=%RULENAME% dir=in action=allow protocol=TCP localport=%PORT% profile=any' } catch { exit 1 }" >nul 2>nul
+    netsh advfirewall firewall show rule name="%RULENAME%" >nul 2>nul
+    if errorlevel 1 (
+        echo       [WARN] Rule NOT added. This PC still works, but others
+        echo              may not connect. To fix it, run this once in an
+        echo              ADMIN terminal:
+        echo              netsh advfirewall firewall add rule name=%RULENAME% dir=in action=allow protocol=TCP localport=%PORT% profile=any
+    ) else (
+        echo       Firewall rule added.
+    )
+) else (
+    echo [2/3] Firewall rule already in place.
+)
+echo.
+
+rem ---- 3. already running? do not start a second instance ----
 netstat -ano | findstr /c:":%PORT%" | findstr /c:"LISTENING" >nul
 if not errorlevel 1 (
-    echo Port %PORT% is already in use - probably this app is already running.
-    echo Open the URL printed in that window.
+    echo [3/3] The service is ALREADY RUNNING on port %PORT%.
+    echo       No need to start it twice - just share the address below.
     echo.
-    netstat -ano | findstr /c:":%PORT%" | findstr /c:"LISTENING"
+    call :showurls
+    start "" http://127.0.0.1:%PORT%
+    echo This window can be closed. The running service is not affected.
+    echo.
     pause
     exit /b 0
 )
 
+echo [3/3] Starting the service ...
+echo.
+call :showurls
+echo   Keep this window open. Closing it stops sharing.
+echo   Minimising is fine. If it crashes it restarts by itself.
 echo ============================================================
-echo   Customs Doc Generator - SHARED MODE
-echo.
-echo   On this PC : http://127.0.0.1:%PORT%
-echo   For others : see the addresses printed below
-echo.
-echo   Only devices on the same network can reach it.
-echo   Windows will ask about the firewall once - allow "Private network".
-echo   Keep this window open. Minimising is fine, closing stops sharing.
-echo ============================================================
-echo.
-echo Your LAN addresses:
-for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /c:"IPv4"') do for /f "tokens=* delims= " %%B in ("%%A") do echo    http://%%B:%PORT%
 echo.
 
 set OPEN_BROWSER=1
@@ -84,5 +108,21 @@ if !FAILS! GEQ 3 (
 )
 echo.
 echo service stopped, restarting in 2 seconds ...  ^(close this window to stop^)
+rem use ping, not timeout: on machines where GNU coreutils is on PATH, `timeout /t` fails
 ping -n 3 127.0.0.1 >nul 2>nul
 goto loop
+
+:showurls
+echo   Send this address to your colleagues:
+set "LANIP="
+for /f "usebackq delims=" %%A in (`"%PY%" app.py --lan`) do if not defined LANIP set "LANIP=%%A"
+if defined LANIP (
+    echo       http://!LANIP!:%PORT%
+) else (
+    echo       [WARN] Could not detect the network address.
+    echo              Run "ipconfig" in a terminal to look it up.
+)
+echo.
+echo   On this computer: http://127.0.0.1:%PORT%
+echo.
+exit /b 0

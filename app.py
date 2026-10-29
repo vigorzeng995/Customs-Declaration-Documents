@@ -2757,6 +2757,14 @@ def _lan_ips():
 
 
 if __name__ == '__main__':
+    # 供 启动脚本 调用：只打印本机局域网地址，不启服务。
+    # 放在这里是为了复用 _lan_ips()，避免在 .bat 里写复杂的网卡过滤。
+    if '--lan' in sys.argv:
+        _ips = _lan_ips()
+        if _ips:
+            print(_ips[0])
+        sys.exit(0)
+
     # 默认只听本机；设 ODIN_HOST=0.0.0.0 后同一网络里的其他人用本机 IP 就能打开
     HOST = os.environ.get('ODIN_HOST') or '127.0.0.1'
     try:
