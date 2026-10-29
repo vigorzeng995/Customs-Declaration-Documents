@@ -15,7 +15,8 @@ if errorlevel 1 (
 )
 
 rem ---- 1. already running? just open the page, do not start a 2nd instance ----
-netstat -ano | findstr /c:"127.0.0.1:%PORT%" | findstr /c:"LISTENING" >nul
+rem match any bind address (127.0.0.1 or 0.0.0.0), so shared mode is detected too
+netstat -ano | findstr /c:":%PORT%" | findstr /c:"LISTENING" >nul
 if not errorlevel 1 (
     echo Service already running on port %PORT%. Opening the page ...
     echo If the page ever stops working, close the window that runs the service,

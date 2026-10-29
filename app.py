@@ -1876,7 +1876,7 @@ PAGE = r"""<!DOCTYPE html>
       <span class="badge__BG_CLASS__" id="bgStatus">__BG_TEXT__</span>
     </div>
     <p class="desc">
-      默认是纯白底。想换就上传一张自己的图片（JPG / PNG / WebP，≤ 12 MB），再用滑杆调浓淡；图片只保存在本机。
+      默认是内置壁纸。想换就上传一张自己的图片（JPG / PNG / WebP，≤ 12 MB），再用滑杆调浓淡；图片只保存在本机。
     </p>
     <div class="actions__BG_HASIMG__" id="bgActions">
       <label class="btn btn-ghost">
@@ -1884,7 +1884,7 @@ PAGE = r"""<!DOCTYPE html>
         <input type="file" id="bgFile" accept="image/jpeg,image/png,image/webp,image/gif"
                style="position:absolute;left:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer;">
       </label>
-      <button class="btn btn-ghost" id="bgReset" type="button">恢复默认（白底）</button>
+      <button class="btn btn-ghost" id="bgReset" type="button">恢复默认壁纸</button>
       <span class="ophint" id="opHint">选择图片后可调浓淡</span>
       <label class="opwrap" title="100% 为原图，数值越低背景越淡">
         <span>背景不透明度</span>
@@ -2104,7 +2104,7 @@ function sampleLum(url,cb){
 
 function bgBadge(cls,text){ bgStatus.className='badge'+(cls?' '+cls:''); bgStatus.textContent=text; }
 
-// url 为空 = 没有背景图，回到纯白底
+// url 为空 = 连默认壁纸都没有（文件被删），退回纯白底
 function setBg(url){
   const box=document.getElementById('bgActions');
   if(url){
@@ -2171,7 +2171,10 @@ document.getElementById('bgReset').onclick=async function(){
   const btn=this; btn.disabled=true; bgBadge('','正在恢复…');
   try{
     const r=await toJson(await fetch('/appearance/background/reset',{method:'POST'}).catch(()=>null));
-    if(r&&r.ok){ setBg(null); setOp(100); bgBadge('','纯白底'); }
+    if(r&&r.ok){
+      bgLum=(r.lum==null?null:+r.lum);
+      setBg(r.url); setOp(100); bgBadge('','已恢复默认壁纸');
+    }
     else{ bgBadge('err','恢复失败：'+((r&&r.error)||'未知错误')); }
   }catch(err){
     bgBadge('err','恢复失败：'+String(err&&err.message||err));
@@ -2204,9 +2207,11 @@ def _json_error(e):
 
 
 LOGO = os.path.join(BASE, 'logo.png')
+DEFAULT_BG = os.path.join(BASE, 'bg-default.webp')   # 内置默认壁纸（跟着仓库走）
 
-# ---------- 外观（自定义背景 / 不透明度） ----------
-# 默认纯白底，没有任何内置底图：屏幕上出现的背景只可能是用户自己上传的那张。
+# ---------- 外观（默认壁纸 / 自定义背景 / 不透明度） ----------
+# 内置一张默认壁纸 bg-default.webp，随仓库分发；用户上传的图片覆盖它，点「恢复默认」回到它。
+# 缺少这张图（或没装 Pillow 时）也不会出错，页面退回纯白底。
 # 单独存 appearance.json，不去动 local_config.json，互不影响：写坏了也只丢外观设置。
 LOOK_FILE = os.path.join(BASE, 'appearance.json')
 LOOK_KEYS = ('bg', 'opacity', 'lum')
@@ -2288,8 +2293,32 @@ def _bg_custom_path():
 
 
 def _bg_path():
-    """当前生效的背景：只有用户上传的那张，没有就返回空（页面是白底）。"""
-    return _bg_custom_path()
+    """当前生效的背景：用户上传的优先，否则用内置默认壁纸；都没有就返回空（白底）。"""
+    p = _bg_custom_path()
+    if p:
+        return p
+    return DEFAULT_BG if os.path.isfile(DEFAULT_BG) else ''
+
+
+_dlum_cache = {'path': '', 'v': None}
+
+
+def _default_lum():
+    """默认壁纸顶部 45% 的平均亮度，用来决定标题黑白。只算一次，文件换了自动重算。"""
+    if not os.path.isfile(DEFAULT_BG):
+        return None
+    if _dlum_cache['path'] == DEFAULT_BG:
+        return _dlum_cache['v']
+    try:
+        from PIL import Image
+        im = Image.open(DEFAULT_BG).convert('RGB')
+        gw, gh = im.size
+        head = im.crop((0, 0, gw, max(1, int(gh * 0.45)))).convert('L')
+        v = round(float(head.resize((1, 1), Image.BOX).getpixel((0, 0))), 1)
+    except Exception:
+        v = None
+    _dlum_cache.update(path=DEFAULT_BG, v=v)
+    return v
 
 
 def _bg_url():
@@ -2496,27 +2525,28 @@ def appearance_bg_reset():
             except OSError:
                 pass
     _look_set(bg='', opacity=1.0, lum=None)
-    return jsonify({'ok': True, 'url': '', 'opacity': 1.0})
+    return jsonify({'ok': True, 'url': _bg_url(), 'opacity': 1.0,
+                    'lum': _default_lum()})
 
 
 @app.route('/')
 def index():
     look = _look()
     url = _bg_url()
-    custom = bool(url)
+    custom = bool(_bg_custom_path())
     op = look['opacity']
     pct = int(round(op * 100))
-    lum = look.get('lum')
-    dark = bool(custom) and lum is not None and _eff_lum(lum, op) < LUM_DARK_MAX
+    lum = look.get('lum') if custom else _default_lum()
+    dark = bool(url) and lum is not None and _eff_lum(lum, op) < LUM_DARK_MAX
     page = (PAGE.replace('__BG_IMG__', ("url('%s')" % url) if url else 'none')
                 .replace('__BG_OP__', ('%.2f' % op) if url else '0')
                 .replace('__BG_OP_PCT__', str(pct))
                 .replace('__BG_OP_DIS__', '' if url else ' disabled')
-                .replace('__BG_HASIMG__', ' has-img' if custom else '')
-                .replace('__BG_CLASS__', ' ok' if custom else '')
+                .replace('__BG_HASIMG__', ' has-img' if url else '')
+                .replace('__BG_CLASS__', ' ok' if url else '')
                 .replace('__BODY_CLASS__', ' class="bg-dark"' if dark else '')
                 .replace('__BG_LUM__', ('%.1f' % lum) if lum is not None else 'null')
-                .replace('__BG_TEXT__', '自定义背景' if custom else '纯白底'))
+                .replace('__BG_TEXT__', '自定义背景' if custom else '默认壁纸'))
     return page
 
 @app.route('/master/export')
@@ -2704,15 +2734,53 @@ def _port_busy(port=8765):
             pass
 
 
+def _lan_ips():
+    """本机的局域网地址，用于告诉别人该在浏览器里输入什么。"""
+    out = []
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))          # 不会真的发包，只为拿到出口网卡地址
+            out.append(s.getsockname()[0])
+        finally:
+            s.close()
+    except Exception:
+        pass
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if ip not in out and not ip.startswith('127.'):
+                out.append(ip)
+    except Exception:
+        pass
+    return out
+
+
 if __name__ == '__main__':
+    # 默认只听本机；设 ODIN_HOST=0.0.0.0 后同一网络里的其他人用本机 IP 就能打开
+    HOST = os.environ.get('ODIN_HOST') or '127.0.0.1'
+    try:
+        PORT = int(os.environ.get('ODIN_PORT') or 8765)
+    except ValueError:
+        PORT = 8765
+
     # 只有最外层进程做占用检查；reloader 派生的子进程要照常 bind
-    if not os.environ.get('WERKZEUG_RUN_MAIN') and _port_busy():
-        print('8765 已被占用，说明服务已经在运行 —— 直接打开 http://127.0.0.1:8765 即可。')
+    if not os.environ.get('WERKZEUG_RUN_MAIN') and _port_busy(PORT):
+        print('端口 %d 已被占用，说明服务已经在运行。' % PORT)
+        print('本机打开： http://127.0.0.1:%d' % PORT)
         sys.exit(0)
+    if not os.environ.get('WERKZEUG_RUN_MAIN'):
+        print('本机打开： http://127.0.0.1:%d' % PORT)
+        if HOST not in ('127.0.0.1', 'localhost'):
+            ips = _lan_ips()
+            for ip in ips[:1]:      # 默认路由那块网卡就是同事该用的地址
+                print('同一网络内访问： http://%s:%d' % (ip, PORT))
+            print('（第一次运行时 Windows 会问是否允许防火墙，请勾选「专用网络」）')
+        sys.stdout.flush()
     if os.environ.get('OPEN_BROWSER') == '1' and not os.environ.get('WERKZEUG_RUN_MAIN'):
         import threading, webbrowser
-        threading.Timer(1.5, lambda: webbrowser.open('http://127.0.0.1:8765')).start()
+        threading.Timer(1.5, lambda: webbrowser.open('http://127.0.0.1:%d' % PORT)).start()
     # use_reloader：改完 app.py 自动重启，不需要手工杀掉进程再起，
     # 浏览器刷新一下就接上，中间只有不到 1 秒的空档。
-    app.run(host='127.0.0.1', port=8765, debug=False,
+    app.run(host=HOST, port=PORT, debug=False,
             use_reloader=True, reloader_type='stat')
