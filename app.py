@@ -144,8 +144,7 @@ def _find_sh():
 def _pdf_skill_dir():
     """定位可选的 PDF → Markdown 转换工具（workbuddy-pdf skill）。
 
-    可用环境变量 PDF_SKILL_DIR 指定；找不到就返回 None，走 pdftotext 兜底，
-    这样换台机器 / 别人 clone 也能跑，不依赖某台电脑上的绝对路径。
+    可用环境变量 PDF_SKILL_DIR 指定；找不到就返回 None。
     """
     cands = [os.environ.get('PDF_SKILL_DIR', ''), SKILL]
     for c in cands:
@@ -154,56 +153,183 @@ def _pdf_skill_dir():
     return None
 
 
-def extract_md(pdf):
-    out = os.path.join(tempfile.mkdtemp(), 'c.md')
+def _pdf_cli():
+    """workbuddy-pdf 原生 CLI 的真实路径，没有就返回 None。
+
+    注意：skill 里的 run.sh 只是个壳，真正的程序在 bin/<os>-<arch>/ 下面。
+    WorkBuddy 有些安装方式并不打包这个 exe，所以这里必须真的检查文件，
+    不能再"看到 run.sh 就以为能用"——否则解析会白走一趟 shell 再失败。
+    """
+    env = os.environ.get('WORKBUDDY_PDF')
+    if env and os.path.isfile(env):
+        return env
     sk = _pdf_skill_dir()
     if sk:
-        r = subprocess.run([_find_sh(), os.path.join(sk, 'scripts', 'run.sh'),
-                            pdf, out, '-f', 'md', '-q'],
-                           capture_output=True, text=True)
-        if r.returncode != 0:
-            raise RuntimeError('PDF 解析失败: ' + (r.stderr or '')[:200])
-        return open(out, encoding='utf-8').read()
+        name = 'workbuddy-pdf.exe' if os.name == 'nt' else 'workbuddy-pdf'
+        for sub in ('windows-x86_64', 'windows-arm64', 'macos-arm64',
+                    'macos-x86_64', 'linux-x86_64', 'linux-arm64'):
+            p = os.path.join(sk, 'bin', sub, name)
+            if os.path.isfile(p):
+                return p
+    return shutil.which('workbuddy-pdf')
 
-    # 兜底：poppler 的 pdftotext（保留版面，表格列不会挤成一团）
+
+def _word_lines(page):
+    """把一页的 word 按纵坐标聚成文本行，效果接近 pdftotext -layout：
+
+    同一行的内容拼成一行，表格里每一行商品就是一条完整记录。
+    """
+    words = page.extract_words(use_text_flow=False, keep_blank_chars=False,
+                               x_tolerance=1.5, y_tolerance=3)
+    buckets = {}
+    for w in words:
+        buckets.setdefault(round(w['top'] / 3.0), []).append(w)
+    lines = []
+    for key in sorted(buckets):
+        ws = sorted(buckets[key], key=lambda x: x['x0'])
+        t = ' '.join(x['text'] for x in ws).strip()
+        if t:
+            lines.append(t)
+    return lines
+
+
+def _text_external(pdf):
+    """外部工具抽文本（可选加速/兜底）。workbuddy-pdf CLI 优先，其次 poppler。"""
+    cli = _pdf_cli()
+    if cli:
+        out = os.path.join(tempfile.mkdtemp(), 'c.md')
+        try:
+            r = subprocess.run([cli, pdf, out, '-f', 'md', '-q'],
+                               capture_output=True, text=True)
+            if r.returncode == 0 and os.path.exists(out):
+                return open(out, encoding='utf-8').read()
+        except OSError:
+            pass
     exe = shutil.which('pdftotext')
-    if not exe:
-        raise RuntimeError(
-            '未找到 PDF 解析工具。请二选一：\n'
-            '  1) 安装 poppler 并确保 pdftotext 在 PATH 里；\n'
-            '  2) 设置环境变量 PDF_SKILL_DIR 指向 workbuddy-pdf skill 目录。')
-    r = subprocess.run([exe, '-layout', '-enc', 'UTF-8', pdf, out],
-                       capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError('PDF 解析失败: ' + (r.stderr or '')[:200])
-    return open(out, encoding='utf-8').read()
+    if exe:
+        out = os.path.join(tempfile.mkdtemp(), 'c.txt')
+        try:
+            r = subprocess.run([exe, '-layout', '-enc', 'UTF-8', pdf, out],
+                               capture_output=True, text=True)
+            if r.returncode == 0 and os.path.exists(out):
+                return open(out, encoding='utf-8').read()
+        except OSError:
+            pass
+    return ''
 
-def parse_order(md):
-    norm = lambda s: re.sub(r'(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])', '', s)
-    lines = [norm(l.rstrip()) for l in md.splitlines()]
-    text = '\n'.join(lines)
-    hdr = {'客户': '', '联系人': '', '报价日期': '', '报价号码': '', '币别': '', '信用条件': ''}
-    for key, pat in [('客户', r'客户\s*[：:]\s*([^\n]+)'),
-                     ('联系人', r'联系人\s*[：:]\s*([^\n]+)'),
-                     ('报价日期', r'报价日期[：:]\s*(\S+)'),
-                     ('报价号码', r'报价号码[：:]\s*(\S+)'),
-                     ('币别', r'币别[：:]\s*(\S+)'),
-                     ('信用条件', r'信用条件[：:]\s*(\S+?)(?=\s*地址|$)')]:
-        m = re.search(pat, text)
-        if m:
-            hdr[key] = m.group(1).strip()
-    # 商品行：号序 ERP编码 品名 规格 单位 数量 单价 税率 税额 金额
+
+def extract_pdf(pdf):
+    """PDF → (文本, 表格行)。
+
+    先用纯 Python 的 pdfplumber：它同时给出表格结构和按行重排的文本，
+    表格能读出明细时最准。这样换台电脑、别人 clone 下来行为完全一致，
+    不依赖本机装了什么 CLI。
+    只有在表格读不出明细时才去试外部工具。
+    """
+    text_py, tables = '', []
+    try:
+        import pdfplumber
+    except ImportError:
+        pdfplumber = None
+
+    if pdfplumber:
+        try:
+            pages = []
+            with pdfplumber.open(pdf) as doc:
+                for page in doc.pages:
+                    pages.append('\n'.join(_word_lines(page)))
+                    try:
+                        for tb in (page.extract_tables() or []):
+                            tables.extend(tb)
+                    except Exception:
+                        pass        # 单页表格识别失败不影响其它页
+            text_py = '\n\n'.join('<!-- Page %d -->\n\n%s' % (i, t)
+                                  for i, t in enumerate(pages, 1))
+        except Exception:
+            text_py, tables = '', []
+
+    if _items_from_table(tables):
+        return text_py, tables          # 表格结构最靠得住，直接用
+
+    text = _text_external(pdf)
+    if text:
+        return text, tables
+    if text_py:
+        return text_py, tables
+    raise RuntimeError('未找到可用的 PDF 解析方式，请执行：pip install pdfplumber')
+
+
+def extract_md(pdf):
+    return extract_pdf(pdf)[0]
+
+def _to_num(s):
+    try:
+        return float(str(s).replace(',', '').strip())
+    except Exception:
+        return 0.0
+
+
+def _items_from_table(rows):
+    """直接从 PDF 表格结构取明细——比抠正则稳得多。
+
+    pdfplumber 把表格识别成行列后，商品编码/名称/规格/单位/数量/金额
+    各就各位，不会因为换行、空格数变化而错位。
+    """
+    items = []
+    if not rows:
+        return items
+    hdr_map = {}
+    for row in rows:
+        if not row:
+            continue
+        flat = [re.sub(r'\s+', '', str(c)) if c else '' for c in row]
+        if '商品编码' in flat and '商品名称' in flat:
+            for i, h in enumerate(flat):
+                if h and h not in hdr_map:
+                    hdr_map[h] = i
+            continue
+        if not hdr_map:
+            continue
+
+        def get(key):
+            i = hdr_map.get(key)
+            if i is None or i >= len(row) or not row[i]:
+                return ''
+            return ' '.join(str(row[i]).split())      # 单元格内换行 → 单空格
+
+        no = get('序号').replace(' ', '')
+        erp = get('商品编码').replace(' ', '')
+        if not re.fullmatch(r'\d+', no) or not re.fullmatch(r'[A-Za-z]{1,4}\d{2,}', erp):
+            continue        # 表头、合计行、备注行都在这被跳过
+        name, spec = get('商品名称'), get('规格型号')
+        items.append({'no': int(no), 'erp': erp,
+                      'name': (name + ' ' + spec).strip() if spec else name,
+                      'unit': get('单位'),
+                      'qty': _to_num(get('数量')),
+                      'price': _to_num(get('含税单价')),
+                      'amount': _to_num(get('含税金额'))})
+    return items
+
+
+def _items_from_lines(lines):
+    """从按行重排的文本里抠商品行（PDF 没有表格线时的兜底）。
+
+    商品行形如：1 TJ00004 三维激光扫描仪 套 1.00 1,898.99 0% 1,898.99
+    同一件商品可能被拆成好几行（单元格内换行），逐行往后拼到 buffer 里。
+    """
     items = []
     started = False
     buf = None
-    def flush(buf):
-        if not buf:
+
+    def flush(text):
+        if not text:
             return
-        m = re.match(r'^(\d+)\s+([A-Za-z]{1,4}\d{2,})\s+(.*)$', buf)
+        m = re.match(r'^(\d+)\s+([A-Za-z]{1,4}\d{2,})\s+(.*)$', text.strip())
         if not m:
             return
         no, erp, rest = m.group(1), m.group(2), m.group(3)
-        tm = re.findall(r'((?:套|PCS|个|pcs|PCS|Pcs|件))\s+([\d.]+)\s+([\d,]+\.?\d*)\s+(\d+%)\s+([\d,]+\.?\d*)', rest)
+        tm = re.findall(r'((?:套|PCS|个|pcs|Pcs|件))\s+([\d.]+)\s+'
+                        r'([\d,]+\.?\d*)\s+(\d+%)\s+([\d,]+\.?\d*)', rest)
         if not tm:
             return
         unit, qty, price, tax, amt = tm[-1]
@@ -211,8 +337,10 @@ def parse_order(md):
         items.append({'no': int(no), 'erp': erp, 'name': name, 'unit': unit,
                       'qty': float(qty), 'price': float(price.replace(',', '')),
                       'amount': float(amt.replace(',', ''))})
+
     for l in lines:
-        if '号序' in l and '商品编码' in l:
+        # 竖排的「序 / 号」会被拆成两行，所以两个条件任一满足就开表
+        if ('号序' in l and '商品编码' in l) or ('商品编码' in l and '商品名称' in l):
             started = True
             continue
         if '合计' in l:
@@ -220,12 +348,38 @@ def parse_order(md):
             break
         if not started:
             continue
-        if re.match(r'^\d+\s+[A-Za-z]{1,4}\d{2,}', l):
+        if re.match(r'^\d+\s+[A-Za-z]{1,4}\d{2,}', l.strip()):
             flush(buf)
             buf = l
         else:
             buf = (buf + ' ' + l) if buf else l
-    return hdr, items
+    return items
+
+
+def parse_order(md, tables=None):
+    norm = lambda s: re.sub(r'(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])', '', s)
+    lines = [norm(l.rstrip()) for l in md.splitlines()]
+    text = '\n'.join(lines)
+    # 值后面可能紧跟同行的另一个栏位（PDF 左右两栏被拼成一行），
+    # 所以匹配到下一个「某某：」就收住，不能一路吃到行尾。
+    stop = r'(?=[ \t]*[\u4e00-\u9fff]{2,8}[ \t]*[：:]|[ \t]*$)'
+    hdr = {'客户': '', '联系人': '', '报价日期': '', '报价号码': '', '币别': '', '信用条件': ''}
+    for key, pat in [('客户', r'客户\s*[：:]\s*(.+?)' + stop),
+                     ('联系人', r'联系人\s*[：:]\s*(.+?)' + stop),
+                     ('报价日期', r'报价日期[：:]\s*(\S+)'),
+                     ('报价号码', r'报价号码[：:]\s*(\S+)'),
+                     ('币别', r'币别[：:]\s*(\S+)'),
+                     # 「90天」常和后面的「地址：」挤在同一行，单独认「数字+天」
+                     ('信用条件', r'信用条件[：:]\s*(\d+\s*天|[^\s：:]{1,8})')]:
+        m = re.search(pat, text, re.M)
+        if m:
+            hdr[key] = m.group(1).strip()
+
+    # 表格和文本两条路都算，取条数多的那一份：
+    # 宁可多抓，也不能漏行——漏一条就等于少报一票货。
+    items_tbl = _items_from_table(tables) or []
+    items_txt = _items_from_lines(lines)
+    return hdr, (items_txt if len(items_txt) > len(items_tbl) else items_tbl)
 
 # ============ 报关单写入 ============
 
@@ -2649,10 +2803,15 @@ def parse():
         if fh.read(5) != b'%PDF-':
             return jsonify({'ok': False, 'error': '这不是 PDF 文件，请确认拖的是销售订单 PDF'})
     try:
-        md = extract_md(pdf)
-        hdr, items = parse_order(md)
+        md, tables = extract_pdf(pdf)
+        hdr, items = parse_order(md, tables)
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
+    if not items:
+        return jsonify({'ok': False,
+                        'error': '没能从这份 PDF 里读出商品明细。\n'
+                                 '请确认拖的是销售订单 PDF（含「号序/商品编码/商品名称」表格），'
+                                 '不是扫描图或截图。'})
     try:
         master = load_master()
     except Exception:
