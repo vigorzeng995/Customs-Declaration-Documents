@@ -1659,15 +1659,31 @@ PAGE = r"""<!DOCTYPE html>
   html,body{margin:0}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
-    background:radial-gradient(900px 420px at 50% -200px,#e7efff 0%,rgba(231,239,255,0) 70%),var(--bg);
+    background:var(--bg) url('/bg.webp') center center / cover no-repeat fixed;
     color:var(--ink);
     min-height:100vh;
     -webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:860px;margin:0 auto;padding:0 20px}
+  /* 背景压一层浅色雾，保证顶部标题与卡片始终清晰；越往下越不透，机器人若隐若现 */
+  body::before{
+    content:'';position:fixed;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,
+      rgba(248,250,254,.08) 0%,
+      rgba(248,250,254,.26) 30%,
+      rgba(248,250,254,.42) 58%,
+      rgba(248,250,254,.74) 84%,
+      rgba(248,250,254,.94) 100%);
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px;position:relative}
 
   /* ---------- 顶部 ---------- */
-  .topbar{padding:36px 0 26px}
+  .topbar{position:relative;padding:54px 0 30px}
+  /* 顶部柔光：在紫蓝背景上垫一层白，保证标题与副标题可读 */
+  .topbar::before{content:'';position:absolute;left:50%;top:0;width:140vw;height:230px;
+    transform:translateX(-50%);pointer-events:none;
+    background:radial-gradient(58% 100% at 50% 0%,rgba(255,255,255,.94) 0%,
+               rgba(255,255,255,.62) 46%,rgba(255,255,255,0) 82%)}
+  .bar{position:relative}
   .bar{display:flex;align-items:center;gap:16px}
   .logo{width:56px;height:56px;border-radius:50%;flex:0 0 auto;
         box-shadow:0 6px 18px -6px rgba(31,90,255,.55)}
@@ -1675,8 +1691,12 @@ PAGE = r"""<!DOCTYPE html>
   .tagline{margin:7px 0 0;font-size:13px;color:var(--ink-2)}
 
   /* ---------- 卡片 ---------- */
-  .card{background:#fff;border:1px solid var(--line);border-radius:var(--r);
-        padding:22px 24px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .card{background:rgba(255,255,255,.84);
+        -webkit-backdrop-filter:blur(18px) saturate(1.25);
+        backdrop-filter:blur(18px) saturate(1.25);
+        border:1px solid rgba(255,255,255,.85);border-radius:var(--r);
+        padding:22px 24px;margin-bottom:16px;
+        box-shadow:0 1px 2px rgba(15,23,42,.04), 0 18px 44px -28px rgba(15,23,42,.35)}
   .card-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
   h2{font-size:15.5px;font-weight:600;margin:0;letter-spacing:.1px}
   .desc{font-size:13px;color:var(--ink-2);line-height:1.7;margin:0 0 16px}
@@ -1698,8 +1718,8 @@ PAGE = r"""<!DOCTYPE html>
   .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 
   /* ---------- 拖拽区 ---------- */
-  .drop{border:1.5px dashed #d3dcec;border-radius:12px;padding:34px 20px;text-align:center;
-        cursor:pointer;transition:.18s;background:#fbfcff}
+  .drop{border:1.5px dashed #c9d6ea;border-radius:12px;padding:34px 20px;text-align:center;
+        cursor:pointer;transition:.18s;background:rgba(255,255,255,.55)}
   .drop:hover{border-color:#a8bde6;background:#f7faff}
   .drop.hover{border-color:var(--blue);background:var(--blue-l)}
   .drop.done{border-style:solid;border-color:#bfe6cc;background:#f4fbf6}
@@ -1735,8 +1755,17 @@ PAGE = r"""<!DOCTYPE html>
   .path{font-size:11.5px;color:var(--ink-3);margin-top:10px;word-break:break-all}
   .tip{font-size:11.5px;color:var(--ink-3);margin-top:5px;line-height:1.6}
 
-  .foot{text-align:center;font-size:11.5px;color:var(--ink-3);padding:22px 20px 52px}
+  .foot{text-align:left;padding:24px 0 40px}
+  .foot em{display:inline-block;font-style:normal;font-size:11.5px;color:#5c6879;
+    letter-spacing:.2px;padding:5px 14px;border-radius:999px;
+    background:rgba(255,255,255,.72);
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+    border:1px solid rgba(255,255,255,.7)}
 
+  /* 宽屏：内容列略向左偏，把右侧留给背景里的机器人，形成前景/背景层次 */
+  @media (min-width:1200px){
+    .wrap{margin-left:clamp(24px, 5.5vw, 240px);margin-right:auto}
+  }
   @media (max-width:620px){
     .topbar{padding:28px 0 22px}
     h1{font-size:18px}
@@ -1799,9 +1828,9 @@ PAGE = r"""<!DOCTYPE html>
     <div id="resultBody"></div>
   </section>
 
-</main>
+  <footer class="foot"><em>Manifold Tech · 本机运行，数据不出本地</em></footer>
 
-<footer class="foot">Manifold Tech · 本机运行，数据不出本地</footer>
+</main>
 
 <script>
 const drop=document.getElementById('drop'), fileInput=document.getElementById('fileInput');
@@ -1934,6 +1963,7 @@ async function openOutput(){
 """
 
 LOGO = os.path.join(BASE, 'logo.png')
+BACKDROP = os.path.join(BASE, 'bg-robot.webp')
 
 
 @app.route('/logo.png')
@@ -1941,6 +1971,15 @@ def logo_file():
     if not os.path.exists(LOGO):
         return '', 404
     return send_file(LOGO, mimetype='image/png')
+
+
+@app.route('/bg.webp')
+def bg_file():
+    if not os.path.exists(BACKDROP):
+        return '', 404
+    r = send_file(BACKDROP, mimetype='image/webp', conditional=True)
+    r.headers['Cache-Control'] = 'public, max-age=86400'
+    return r
 
 
 @app.route('/')

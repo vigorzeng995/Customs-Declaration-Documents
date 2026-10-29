@@ -7,6 +7,8 @@ Built for the routine where every shipment shares the same buyer/seller and only
 line items, invoice number and contract number change.
 
 The interface is in Chinese, matching the declaration paperwork it produces.
+Both `logo.png` and `bg-robot.webp` are decorative: delete them and the page still works
+(a flat light background is used instead).
 
 ## What it does
 
@@ -88,6 +90,7 @@ base_template.xlsx            Legacy template, kept for the old code path
 master.example.xlsx           Sanitized lookup sample (7 columns)
 HS对照表_待填.example.xlsx      Sanitized lookup sample (9 columns)
 logo.png                      Brand mark shown in the page header (swap for your own)
+bg-robot.webp                 Ambient background image behind the page (optional)
 启动.bat                       Windows one-click launcher
 requirements.txt
 ```
