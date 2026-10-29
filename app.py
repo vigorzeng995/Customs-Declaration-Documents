@@ -1705,6 +1705,21 @@ PAGE = r"""<!DOCTYPE html>
   h1{font-size:24px;font-weight:700;letter-spacing:-.4px;margin:0;line-height:1.22}
   .tagline{margin:7px 0 0;font-size:13px;color:#3d4a5e;letter-spacing:.1px}
 
+  /* ---------- 深色壁纸：标题自动转白 ----------
+     只在「背景已经是深色」时生效；卡片是白底的，卡内文字一律不动。
+     顶部那层白色柔光同时换成暗色，否则白字压在白雾上反而更糊。 */
+  body.bg-dark h1{color:#fff;text-shadow:0 1px 16px rgba(0,0,0,.5)}
+  body.bg-dark .tagline{color:rgba(255,255,255,.9);text-shadow:0 1px 12px rgba(0,0,0,.45)}
+  body.bg-dark .topbar::before{
+    background:linear-gradient(180deg,rgba(7,13,28,.52) 0%,
+               rgba(7,13,28,.26) 42%,rgba(7,13,28,0) 100%)}
+  /* 半透明白叠在深色壁纸上会发灰，卡片显脏；深色模式下把卡片提亮到近乎纯白 */
+  body.bg-dark .card{background:rgba(255,255,255,.95);
+    border-color:rgba(255,255,255,.9);
+    box-shadow:0 1px 2px rgba(0,0,0,.2), 0 18px 44px -28px rgba(0,0,0,.55)}
+  body.bg-dark .foot em{background:rgba(255,255,255,.9)}
+  body.bg-dark .logo{box-shadow:0 0 0 3px rgba(255,255,255,.16), 0 8px 22px -8px rgba(0,0,0,.7)}
+
   /* ---------- 卡片 ---------- */
   .card{background:rgba(255,255,255,.84);
         -webkit-backdrop-filter:blur(11px) saturate(1.1);
@@ -1819,7 +1834,7 @@ PAGE = r"""<!DOCTYPE html>
   }
 </style>
 </head>
-<body>
+<body__BODY_CLASS__>
 
 <div class="bgimg" id="bgLayer" style="background-image:__BG_IMG__;opacity:__BG_OP__"></div>
 
@@ -2050,6 +2065,41 @@ const bgOp=document.getElementById('bgOp');
 const opVal=document.getElementById('opVal');
 const BG_MAX=12*1024*1024;
 
+/* ---------- 深色壁纸自动换白标题 ----------
+   bgLum 是服务端算好的「图片顶部平均亮度」；再按当前不透明度与白底混合，
+   得到屏幕上真正看到的亮度，够暗就把 body 切到 .bg-dark。
+   若服务端没给出（Pillow 未安装 / 旧配置文件），回退到 canvas 采样。 */
+const LUM_DARK_MAX=132;
+let bgLum=__BG_LUM__;
+
+function effLum(){
+  if(bgLum==null) return null;
+  const op=Math.max(0,Math.min(100,+bgOp.value||0))/100;
+  return bgLum*op+255*(1-op);
+}
+function applyTone(){
+  const v=effLum();
+  const hasImg=!!bgLayer.style.backgroundImage && bgLayer.style.backgroundImage!=='none';
+  document.body.classList.toggle('bg-dark', v!=null && hasImg && v<LUM_DARK_MAX);
+}
+function sampleLum(url,cb){
+  const im=new Image();
+  im.onload=function(){
+    try{
+      const W=16,H=8,c=document.createElement('canvas');
+      c.width=W; c.height=H;
+      const x=c.getContext('2d');
+      x.drawImage(im,0,0,im.width,Math.max(1,im.height*0.45),0,0,W,H);
+      const d=x.getImageData(0,0,W,H).data;
+      let s=0;
+      for(let i=0;i<d.length;i+=4) s+=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+      cb(s/(W*H));
+    }catch(e){ cb(null); }        // 跨域或 canvas 被禁：放弃，保持原配色
+  };
+  im.onerror=function(){ cb(null); };
+  im.src=url;
+}
+
 function bgBadge(cls,text){ bgStatus.className='badge'+(cls?' '+cls:''); bgStatus.textContent=text; }
 
 // url 为空 = 没有背景图，回到纯白底
@@ -2059,17 +2109,21 @@ function setBg(url){
     bgLayer.style.backgroundImage="url('"+String(url).replace(/['"()\\\s]/g,'')+"')";
     bgOp.disabled=false;
     if(box) box.classList.add('has-img');     // 有图才把滑杆放出来
+    if(bgLum==null) sampleLum(url,function(v){ bgLum=v; applyTone(); });
   }else{
     bgLayer.style.backgroundImage='none';
     bgOp.disabled=true;
+    bgLum=null;
     if(box) box.classList.remove('has-img');  // 白底时换成提示，不留灰滑杆
   }
+  applyTone();
 }
 function setOp(p){
   p=Math.max(0,Math.min(100,Math.round(+p||0)));
   bgOp.value=p;
   bgLayer.style.opacity=p/100;
   opVal.textContent=p+'%';
+  applyTone();
 }
 async function saveOp(p){
   try{
@@ -2096,6 +2150,7 @@ document.getElementById('bgFile').onchange=async e=>{
     const fd=new FormData(); fd.append('file',f);
     const r=await toJson(await fetch('/appearance/background',{method:'POST',body:fd}).catch(()=>null));
     if(r&&r.ok){
+      bgLum=(r.lum==null?null:+r.lum);   // 换图先换亮度，否则会拿旧图的深浅判断
       setBg(r.url);
       // 服务端可能把「调到几乎看不见」的旧值拉回满，这里同步一下滑杆
       setOp(r.opacity==null?100:Math.round(r.opacity*100));
@@ -2120,6 +2175,17 @@ document.getElementById('bgReset').onclick=async function(){
     bgBadge('err','恢复失败：'+String(err&&err.message||err));
   }finally{ btn.disabled=false; }
 };
+
+/* 首次加载：服务端给了亮度就直接用；没给（旧配置 / 没装 Pillow）就自己采样一次，
+   保证「深色壁纸 → 白标题」不依赖上传那一刻的元数据。 */
+(function initTone(){
+  const bgi=bgLayer.style.backgroundImage;
+  if(bgLum==null && bgi && bgi!=='none'){
+    const m=bgi.match(/url\(["']?([^"')]+)["']?\)/);
+    if(m) sampleLum(m[1],function(v){ bgLum=v; applyTone(); });
+  }
+  applyTone();
+})();
 </script>
 </body>
 </html>
@@ -2141,7 +2207,7 @@ LOGO = os.path.join(BASE, 'logo.png')
 # 默认纯白底，没有任何内置底图：屏幕上出现的背景只可能是用户自己上传的那张。
 # 单独存 appearance.json，不去动 local_config.json，互不影响：写坏了也只丢外观设置。
 LOOK_FILE = os.path.join(BASE, 'appearance.json')
-LOOK_KEYS = ('bg', 'opacity')
+LOOK_KEYS = ('bg', 'opacity', 'lum')
 BG_EXTS = ('.webp', '.jpg', '.jpeg', '.png', '.gif')
 BG_MAX_IN = 12 * 1024 * 1024        # 允许上传的原始大小
 BG_MAX_PX = 60 * 1024 * 1024        # 像素总量上限，防「解压炸弹」
@@ -2158,7 +2224,7 @@ def _clamp_op(v):
 
 def _look():
     """读外观配置。文件缺失、JSON 损坏、字段非法一律退回默认值，绝不影响页面打开。"""
-    d = {'bg': '', 'opacity': 1.0}
+    d = {'bg': '', 'opacity': 1.0, 'lum': None}
     try:
         if os.path.exists(LOOK_FILE):
             raw = json.load(open(LOOK_FILE, encoding='utf-8'))
@@ -2166,9 +2232,25 @@ def _look():
                 bg = raw.get('bg')
                 d['bg'] = bg if _bg_name_ok(bg) else ''
                 d['opacity'] = _clamp_op(raw.get('opacity', 1.0))
+                try:
+                    lum = float(raw.get('lum'))
+                    d['lum'] = lum if 0.0 <= lum <= 255.0 else None
+                except (TypeError, ValueError):
+                    d['lum'] = None
     except Exception:
         pass
     return d
+
+
+def _eff_lum(lum, op):
+    """图片顶部亮度 × 当前不透明度，与白底混合后屏幕上真正的亮度。"""
+    try:
+        return float(lum) * op + 255.0 * (1.0 - op)
+    except (TypeError, ValueError):
+        return 255.0
+
+
+LUM_DARK_MAX = 132.0   # 低于这个亮度就认为背景够深，标题转白
 
 
 def _look_set(**kw):
@@ -2282,6 +2364,15 @@ def _save_bg_bytes(data):
         tmp = os.path.join(BASE, '_bg_tmp_%s.webp' % uid)
         im.save(tmp, format='WEBP', quality=82, method=4)
         info.update(w=im.size[0], h=im.size[1])
+        # 顶部 45% 的平均亮度（0-255）。背景按 cover + center top 铺，屏幕顶部
+        # 就是图片顶部，标题正好压在这里，所以只取顶上这一条带，不用全图平均。
+        # 缩到 1×1 时 BOX 重采样就是精确的面积平均，比逐像素求和稳。
+        try:
+            gw, gh = im.size
+            head = im.crop((0, 0, gw, max(1, int(gh * 0.45)))).convert('L')
+            info['lum'] = round(float(head.resize((1, 1), Image.BOX).getpixel((0, 0))), 1)
+        except Exception:
+            info['lum'] = None
     except ImportError:
         # 没装 Pillow 也能用：原图直接存，按嗅探到的真实类型定扩展名
         ext = '.' + kind
@@ -2320,7 +2411,7 @@ def _save_bg_bytes(data):
             except OSError:
                 pass
 
-    if not _look_set(bg=name):
+    if not _look_set(bg=name, lum=info.get('lum')):
         return False, '图片已保存，但外观配置写入失败，请检查目录权限'
     op = _look()['opacity']
     if op < 0.3:
@@ -2402,7 +2493,7 @@ def appearance_bg_reset():
                 os.remove(os.path.join(BASE, f))
             except OSError:
                 pass
-    _look_set(bg='', opacity=1.0)
+    _look_set(bg='', opacity=1.0, lum=None)
     return jsonify({'ok': True, 'url': '', 'opacity': 1.0})
 
 
@@ -2413,12 +2504,16 @@ def index():
     custom = bool(url)
     op = look['opacity']
     pct = int(round(op * 100))
+    lum = look.get('lum')
+    dark = bool(custom) and lum is not None and _eff_lum(lum, op) < LUM_DARK_MAX
     page = (PAGE.replace('__BG_IMG__', ("url('%s')" % url) if url else 'none')
                 .replace('__BG_OP__', ('%.2f' % op) if url else '0')
                 .replace('__BG_OP_PCT__', str(pct))
                 .replace('__BG_OP_DIS__', '' if url else ' disabled')
                 .replace('__BG_HASIMG__', ' has-img' if custom else '')
                 .replace('__BG_CLASS__', ' ok' if custom else '')
+                .replace('__BODY_CLASS__', ' class="bg-dark"' if dark else '')
+                .replace('__BG_LUM__', ('%.1f' % lum) if lum is not None else 'null')
                 .replace('__BG_TEXT__', '自定义背景' if custom else '纯白底'))
     return page
 
