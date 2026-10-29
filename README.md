@@ -1,10 +1,12 @@
-# Customs Declaration Document Generator
+# Manifold Tech — Customs Declaration Document Generator
 
 A local web tool that turns a sales-order PDF into a complete, print-ready set of
 customs declaration documents — one upload, six linked worksheets.
 
 Built for the routine where every shipment shares the same buyer/seller and only the
 line items, invoice number and contract number change.
+
+The interface is in Chinese, matching the declaration paperwork it produces.
 
 ## What it does
 
@@ -85,6 +87,7 @@ base_template_v2.xlsx         Document template (the 6 sheets)
 base_template.xlsx            Legacy template, kept for the old code path
 master.example.xlsx           Sanitized lookup sample (7 columns)
 HS对照表_待填.example.xlsx      Sanitized lookup sample (9 columns)
+logo.png                      Brand mark shown in the page header (swap for your own)
 启动.bat                       Windows one-click launcher
 requirements.txt
 ```

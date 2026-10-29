@@ -1644,66 +1644,164 @@ PAGE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>报关单自动生成器</title>
+<title>Manifold Tech 报关自动生成器</title>
 <style>
-* { box-sizing: border-box; }
-body { font-family: -apple-system, "Microsoft YaHei", sans-serif; margin:0; background:#f5f6f8; color:#222; }
-.wrap { max-width: 920px; margin: 0 auto; padding: 24px 20px 60px; }
-h1 { font-size: 22px; margin: 0 0 4px; }
-.sub { color:#888; font-size: 13px; margin-bottom: 20px; }
-.card { background:#fff; border-radius:12px; padding:20px; margin-bottom:18px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
-.card h2 { font-size:16px; margin:0 0 12px; }
-.btn { display:inline-block; padding:9px 18px; border-radius:8px; border:none; cursor:pointer; font-size:14px; }
-.btn-primary { background:#2f5597; color:#fff; }
-.btn-primary:disabled { background:#a9b8d0; cursor:not-allowed; }
-.btn-ghost { background:#eef1f6; color:#333; }
-.drop { border:2px dashed #c8cfdb; border-radius:10px; padding:32px; text-align:center; color:#888; cursor:pointer; transition:.15s; }
-.drop.hover { border-color:#2f5597; background:#f0f4fb; }
-.drop.done { border-style:solid; border-color:#34a853; background:#f2fbf4; color:#333; }
-.muted { color:#999; font-size:12px; }
-table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
-th,td { border:1px solid #e3e7ee; padding:7px 9px; text-align:left; }
-th { background:#f0f3f8; }
-.ok { color:#34a853; font-weight:600; }
-.miss { color:#e8710a; font-weight:600; }
-.hidden { display:none; }
-.row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-.grow { flex:1; }
-.mt8 { margin-top:8px; }
-.pill { display:inline-block; background:#eef1f6; border-radius:20px; padding:2px 10px; font-size:12px; color:#555; margin-right:6px; }
-.step { color:#2f5597; font-weight:700; }
+  :root{
+    --blue:#1f5aff; --blue-d:#1546d6; --blue-l:#eef4ff;
+    --ink:#0f172a; --ink-2:#4b5768; --ink-3:#94a3b8;
+    --line:#e6ebf5; --bg:#f5f7fb;
+    --ok:#0b7a41; --ok-bg:#e9f9ef; --warn:#a15c00; --warn-bg:#fff7e6;
+    --red:#b42318; --red-bg:#fdecec;
+    --r:16px;
+    --shadow:0 1px 2px rgba(15,23,42,.04), 0 10px 30px -22px rgba(15,23,42,.25);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+    background:radial-gradient(900px 420px at 50% -200px,#e7efff 0%,rgba(231,239,255,0) 70%),var(--bg);
+    color:var(--ink);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:0 20px}
+
+  /* ---------- 顶部 ---------- */
+  .topbar{padding:36px 0 26px}
+  .bar{display:flex;align-items:center;gap:16px}
+  .logo{width:56px;height:56px;border-radius:50%;flex:0 0 auto;
+        box-shadow:0 6px 18px -6px rgba(31,90,255,.55)}
+  h1{font-size:24px;font-weight:700;letter-spacing:-.4px;margin:0;line-height:1.22}
+  .tagline{margin:7px 0 0;font-size:13px;color:var(--ink-2)}
+
+  /* ---------- 卡片 ---------- */
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--r);
+        padding:22px 24px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .card-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  h2{font-size:15.5px;font-weight:600;margin:0;letter-spacing:.1px}
+  .desc{font-size:13px;color:var(--ink-2);line-height:1.7;margin:0 0 16px}
+  .desc b{color:var(--ink);font-weight:600}
+  .badge{font-size:11.5px;padding:3px 9px;border-radius:20px;background:var(--blue-l);
+         color:#2b5bd7;font-weight:500;white-space:nowrap}
+  .badge.ok{background:var(--ok-bg);color:var(--ok)}
+  .badge.err{background:var(--red-bg);color:var(--red)}
+
+  /* ---------- 按钮 ---------- */
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;
+       border:1px solid transparent;font-size:13.5px;font-weight:600;cursor:pointer;
+       text-decoration:none;transition:.16s;font-family:inherit;line-height:1.2}
+  .btn-ghost{background:#fff;border-color:var(--line);color:var(--ink)}
+  .btn-ghost:hover{border-color:#c8d6ee;background:#fafcff}
+  .btn-primary{background:var(--blue);color:#fff;box-shadow:0 8px 18px -10px rgba(31,90,255,.9)}
+  .btn-primary:hover{background:var(--blue-d)}
+  .btn-primary:disabled{background:#bac8e6;box-shadow:none;cursor:not-allowed}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+  /* ---------- 拖拽区 ---------- */
+  .drop{border:1.5px dashed #d3dcec;border-radius:12px;padding:34px 20px;text-align:center;
+        cursor:pointer;transition:.18s;background:#fbfcff}
+  .drop:hover{border-color:#a8bde6;background:#f7faff}
+  .drop.hover{border-color:var(--blue);background:var(--blue-l)}
+  .drop.done{border-style:solid;border-color:#bfe6cc;background:#f4fbf6}
+  .drop-ico{width:36px;height:36px;margin:0 auto 13px;opacity:.92}
+  .drop-title{font-size:14px;font-weight:600;color:var(--ink)}
+  .drop-hint{font-size:12.5px;color:var(--ink-3);margin-top:7px}
+
+  .status{font-size:12.5px;color:var(--ink-3);margin-top:10px;min-height:18px}
+  .ok{color:var(--ok);font-weight:600}
+  .miss{color:var(--red);font-weight:600}
+  .hidden{display:none}
+
+  /* ---------- 表格 ---------- */
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:16px}
+  th{font-size:11px;letter-spacing:.7px;color:var(--ink-3);font-weight:600;
+     text-align:left;padding:0 10px 9px;border-bottom:1px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid #f2f5fa;color:var(--ink)}
+  tr:last-child td{border-bottom:none}
+  tbody tr:hover td{background:#fafcff}
+
+  /* ---------- 结果块 ---------- */
+  .file-title{font-size:13.5px;font-weight:600;margin-bottom:8px;display:flex;
+              align-items:center;gap:8px}
+  .meta{font-size:12.5px;color:var(--ink-3);line-height:1.8}
+  .meta span{color:var(--ink-2)}
+  .file-block{border:1px solid var(--line);border-radius:12px;padding:16px 18px;
+               margin-bottom:12px;background:#fff}
+  .file-block:last-child{margin-bottom:0}
+  .done-box{border:1px solid #d6ecdd;background:#f6fcf8;border-radius:12px;padding:14px 16px}
+  .done-head{font-size:13.5px;font-weight:600;color:var(--ok);margin-bottom:10px}
+  .warn-box{background:var(--warn-bg);border:1px solid #ffd591;color:var(--warn);
+            border-radius:8px;padding:8px 11px;margin-bottom:10px;font-size:12.5px}
+  .path{font-size:11.5px;color:var(--ink-3);margin-top:10px;word-break:break-all}
+  .tip{font-size:11.5px;color:var(--ink-3);margin-top:5px;line-height:1.6}
+
+  .foot{text-align:center;font-size:11.5px;color:var(--ink-3);padding:22px 20px 52px}
+
+  @media (max-width:620px){
+    .topbar{padding:28px 0 22px}
+    h1{font-size:18px}
+    .logo{width:46px;height:46px}
+    .card{padding:18px 16px}
+    .wrap{padding:0 14px}
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>报关单自动生成器</h1>
-  <div class="sub">深圳销售订单(SO) PDF → 自动识别商品编码 → 生成报关单（子表自动联动）</div>
 
-  <div class="card">
-    <h2><span class="step">第 0 步</span> · 下载/上传 HS 对照表</h2>
-    <p class="muted">先下载对照表，填入每个「ERP商品编码」对应的 <b>海关 HS 编码</b>（没填的=特殊品，生成时留空你手动补）。填好后上传回来，程序据此自动补 HS。</p>
-    <div class="row">
-      <a class="btn btn-ghost" href="/master/export" download>⬇ 下载 HS 对照表</a>
-      <label class="btn btn-ghost" style="position:relative;overflow:hidden;">
-        上传已填好的对照表
-        <input type="file" id="masterFile" accept=".xlsx" style="position:absolute;left:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer;">
-      </label>
-      <span id="masterStatus" class="muted">未上传（将用默认模板，HS 全空）</span>
+<header class="topbar">
+  <div class="wrap bar">
+    <img class="logo" src="/logo.png" alt="Manifold Tech" onerror="this.style.display='none'">
+    <div>
+      <h1>Manifold Tech 报关自动生成器</h1>
+      <p class="tagline">销售订单 PDF 一键生成报关单 · 发票 · 箱单 · 合同 · 申报要素</p>
     </div>
   </div>
+</header>
 
-  <div class="card">
-    <h2><span class="step">第 1 步</span> · 上传深圳销售订单 PDF</h2>
-    <div class="drop" id="drop">点击或拖拽 PDF 到这里<br><span class="muted">支持多张销售订单(SO) PDF</span></div>
+<main class="wrap">
+
+  <section class="card">
+    <div class="card-head">
+      <h2>商品编码对照表</h2>
+      <span class="badge" id="masterStatus">使用默认对照表</span>
+    </div>
+    <p class="desc">
+      为每个 <b>ERP 编码</b> 填写对应的 <b>海关 HS 编码</b>，上传一次长期有效，需要调整时重新上传覆盖。未填 HS 的商品生成时留空，可在单据中手动补。
+    </p>
+    <div class="actions">
+      <a class="btn btn-ghost" href="/master/export" download>下载对照表模板</a>
+      <label class="btn btn-ghost">
+        上传已填对照表
+        <input type="file" id="masterFile" accept=".xlsx"
+               style="position:absolute;left:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer;">
+      </label>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>销售订单</h2></div>
+    <p class="desc">拖入 SO 销售订单 PDF，自动识别客户、报价号与商品明细，并按对照表补全 HS 编码。</p>
+    <div class="drop" id="drop">
+      <svg class="drop-ico" viewBox="0 0 24 24" fill="none" stroke="#7d9ee8" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 16V4"/><path d="m7 9 5-5 5 5"/>
+        <path d="M5 16v2.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V16"/>
+      </svg>
+      <div class="drop-title">把 PDF 拖到这里，或点击选择</div>
+      <div class="drop-hint">支持一次选择多份订单</div>
+    </div>
     <input type="file" id="fileInput" accept=".pdf" multiple class="hidden">
-    <div id="fileList" class="mt8"></div>
-  </div>
+    <div id="fileList" class="status"></div>
+  </section>
 
-  <div class="card hidden" id="resultCard">
-    <h2><span class="step">第 2 步</span> · 生成结果</h2>
+  <section class="card hidden" id="resultCard">
+    <div class="card-head"><h2>生成结果</h2></div>
     <div id="resultBody"></div>
-  </div>
-</div>
+  </section>
+
+</main>
+
+<footer class="foot">Manifold Tech · 本机运行，数据不出本地</footer>
 
 <script>
 const drop=document.getElementById('drop'), fileInput=document.getElementById('fileInput');
@@ -1720,20 +1818,26 @@ document.getElementById('masterFile').onchange=async e=>{
   const fd=new FormData(); fd.append('file',f);
   const r=await fetch('/master/upload',{method:'POST',body:fd}).then(x=>x.json());
   const s=document.getElementById('masterStatus');
-  if(r.ok){ masterReady=true; s.innerHTML='<span class="ok">已加载 '+r.count+' 个商品的 HS 映射</span>'; }
-  else{ s.innerHTML='<span class="miss">上传失败：'+r.error+'</span>'; }
+  if(r.ok){
+    masterReady=true;
+    s.className='badge ok';
+    s.textContent='已加载 '+r.count+' 个商品';
+  }else{
+    s.className='badge err';
+    s.textContent='上传失败：'+r.error;
+  }
 };
 
 async function handleFiles(files){
   const list=document.getElementById('fileList');
   const filesArr=[...files].filter(f=>f.name.toLowerCase().endsWith('.pdf'));
-  if(!filesArr.length){ list.innerHTML='<span class="miss">未选择 PDF 文件</span>'; return; }
+  if(!filesArr.length){ list.innerHTML='<span class="miss">没有选中 PDF 文件</span>'; return; }
   drop.classList.add('done');
   const t0=Date.now();
   const results=[];
   for(let i=0;i<filesArr.length;i++){
     const f=filesArr[i];
-    list.innerHTML='<div class="muted">⏳ 正在解析 '+(i+1)+'/'+filesArr.length+'：'+escAttr(f.name)+'…</div>';
+    list.innerHTML='<span class="muted">正在解析 '+(i+1)+'/'+filesArr.length+' · '+escAttr(f.name)+'</span>';
     try{
       const fd=new FormData(); fd.append('file',f);
       const r=await fetch('/parse',{method:'POST',body:fd}).then(x=>x.json());
@@ -1746,9 +1850,9 @@ async function handleFiles(files){
   const badN=results.length-okN;
   const sec=((Date.now()-t0)/1000).toFixed(1);
   let s='';
-  if(okN) s+='<span class="ok">✅ 解析完毕 '+okN+' 个文件</span>';
-  if(badN) s+=(s?'　|　':'')+'<span class="miss">❌ '+badN+' 个解析失败</span>';
-  s+='　|　<span class="muted">耗时 '+sec+' 秒</span>';
+  if(okN) s+='<span class="ok">解析完成 '+okN+' 份</span>';
+  if(badN) s+=(s?' · ':'')+'<span class="miss">失败 '+badN+' 份</span>';
+  s+=' · <span class="muted">耗时 '+sec+' 秒</span>';
   list.innerHTML=s;
   renderResults(results);
 }
@@ -1760,17 +1864,17 @@ function renderResults(results){
   let html='';
   for(const r of results){
     const d=r.data;
-    if(!d.ok){ html+='<p class="miss">'+r.name+'：解析失败 '+d.error+'</p>'; continue; }
-    html+='<div class="card"><div style="font-weight:600;margin-bottom:6px;">📄 '+r.name+'</div>';
-    html+='<div class="muted">客户：'+ (d.hdr['客户']||'-') +'　|　报价号：'+ (d.hdr['报价号码']||'-') +'　|　币别：'+ (d.hdr['币别']||'-') +'</div>';
-    html+='<table><tr><th>序号</th><th>ERP编码</th><th>品名</th><th>数量</th><th>单价</th><th>HS编码</th></tr>';
+    if(!d.ok){ html+='<p class="miss">'+escAttr(r.name)+'：解析失败 '+escAttr(d.error)+'</p>'; continue; }
+    html+='<div class="file-block"><div class="file-title">'+escAttr(r.name)+'</div>';
+    html+='<div class="meta">客户 <span>'+escAttr(d.hdr['客户']||'-')+'</span> · 报价号 <span>'+escAttr(d.hdr['报价号码']||'-')+'</span> · 币别 <span>'+escAttr(d.hdr['币别']||'-')+'</span></div>';
+    html+='<table><thead><tr><th>序号</th><th>ERP 编码</th><th>品名</th><th>数量</th><th>单价</th><th>HS 编码</th></tr></thead><tbody>';
     for(const it of d.items){
-      const hs=it.hs?('<span class="ok">'+it.hs+'</span>'):('<span class="miss">待填</span>');
-      html+='<tr><td>'+it.no+'</td><td>'+it.erp+'</td><td>'+it.name+'</td><td>'+it.qty+'</td><td>'+it.price+'</td><td>'+hs+'</td></tr>';
+      const hs=it.hs?('<span class="ok">'+escAttr(it.hs)+'</span>'):('<span class="miss">待填</span>');
+      html+='<tr><td>'+it.no+'</td><td>'+escAttr(it.erp)+'</td><td>'+escAttr(it.name)+'</td><td>'+it.qty+'</td><td>'+escAttr(it.price)+'</td><td>'+hs+'</td></tr>';
     }
-    html+='</table>';
-    html+='<div class="row mt8"><button class="btn btn-primary" data-token="'+d.token+'" data-name="'+escAttr(r.name)+'" onclick="generate(this.dataset.token,this.dataset.name)">生成报关单</button></div>';
-    html+='<div id="out_'+d.token+'" class="mt8"></div>';
+    html+='</tbody></table>';
+    html+='<div class="actions" style="margin-top:16px;"><button class="btn btn-primary" data-token="'+d.token+'" data-name="'+escAttr(r.name)+'" onclick="generate(this.dataset.token,this.dataset.name)">生成单据</button></div>';
+    html+='<div id="out_'+d.token+'" style="margin-top:12px;"></div>';
     html+='</div>';
   }
   body.innerHTML=html;
@@ -1782,7 +1886,7 @@ function escAttr(s){
 
 async function generate(token, name){
   const box=document.getElementById('out_'+token);
-  if(box) box.innerHTML='<span class="muted">正在生成…</span>';
+  if(box) box.innerHTML='<span class="status"><span class="muted">正在生成，请稍候…</span></span>';
   try{
     const fd=new FormData(); fd.append('token',token);
     const r=await fetch('/generate',{method:'POST',body:fd});
@@ -1793,18 +1897,18 @@ async function generate(token, name){
     }
     const d=await r.json();
     if(!box) return;
-    // 下载区：主按钮用普通 <a download>，即使 iframe 拦截自动下载也可手动点
-    let h='<div style="border:1px solid #cfe3cf;background:#f4faf4;border-radius:8px;padding:12px;">';
-    h+='<div style="font-weight:600;color:#1a7f3c;margin-bottom:8px;">✅ 已生成：'+d.file+'</div>';
-    if(d.warning){ h+='<div style="background:#fff7e6;border:1px solid #ffd591;color:#a15c00;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:13px;">⚠ '+d.warning+'</div>'; }
-    h+='<a href="'+d.download+'" download style="display:inline-block;background:#2f6fed;color:#fff;text-decoration:none;padding:9px 18px;border-radius:6px;font-weight:600;margin-right:8px;">⬇ 下载报关单</a>';
-    h+='<a href="'+d.download+'?inline=1" target="_blank" style="display:inline-block;background:#eef2ff;color:#2f6fed;text-decoration:none;padding:9px 16px;border-radius:6px;margin-right:8px;">在新标签页打开</a>';
-    h+='<button class="btn" onclick="openOutput()">打开输出文件夹</button>';
-    h+='<div class="muted" style="margin-top:8px;font-size:12px;">文件位置：'+d.path+'</div>';
-    h+='<div class="muted" style="margin-top:4px;font-size:12px;">如果点「下载报关单」没反应，说明当前是内嵌预览窗口（浏览器禁止其中下载）。请点「打开输出文件夹」直接取文件，或用系统浏览器访问 http://127.0.0.1:8765</div>';
+    let h='<div class="done-box">';
+    h+='<div class="done-head">已生成 '+escAttr(d.file)+'</div>';
+    if(d.warning){ h+='<div class="warn-box">'+escAttr(d.warning)+'</div>'; }
+    h+='<div class="actions">';
+    h+='<a class="btn btn-primary" href="'+d.download+'" download>下载单据</a>';
+    h+='<a class="btn btn-ghost" href="'+d.download+'?inline=1" target="_blank">在新标签页打开</a>';
+    h+='<button class="btn btn-ghost" onclick="openOutput()">打开输出文件夹</button>';
+    h+='</div>';
+    h+='<div class="path">文件位置：'+escAttr(d.path)+'</div>';
+    h+='<div class="tip">若「下载单据」没有反应，说明当前是内嵌预览窗口（浏览器禁止其中下载）。请改用「打开输出文件夹」，或用系统浏览器访问 http://127.0.0.1:8765</div>';
     h+='</div>';
     box.innerHTML=h;
-    // 仍尝试自动下载（失败不影响上面的按钮）
     try{
       const a=document.createElement('a');
       a.href=d.download; a.download=d.file; a.style.display='none';
@@ -1812,7 +1916,7 @@ async function generate(token, name){
       setTimeout(function(){ a.remove(); }, 3000);
     }catch(e){}
   }catch(err){
-    if(box) box.innerHTML='<span class="miss">生成失败：'+err.message+'</span>';
+    if(box) box.innerHTML='<span class="miss">生成失败：'+escAttr(err.message)+'</span>';
     else alert('生成失败：'+err.message);
   }
 }
@@ -1826,7 +1930,18 @@ async function openOutput(){
 }
 </script>
 </body>
-</html>"""
+</html>
+"""
+
+LOGO = os.path.join(BASE, 'logo.png')
+
+
+@app.route('/logo.png')
+def logo_file():
+    if not os.path.exists(LOGO):
+        return '', 404
+    return send_file(LOGO, mimetype='image/png')
+
 
 @app.route('/')
 def index():
