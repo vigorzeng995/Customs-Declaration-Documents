@@ -1793,7 +1793,9 @@ PAGE = r"""<!DOCTYPE html>
   .path{font-size:11.5px;color:var(--ink-3);margin-top:10px;word-break:break-all}
   .tip{font-size:11.5px;color:var(--ink-3);margin-top:5px;line-height:1.6}
 
-  .foot{text-align:center;padding:24px 0 40px}
+  /* 用 flex 居中最稳：不依赖父级 text-align 继承，也不会被 em 的 inline-block 影响 */
+  .foot{display:flex;justify-content:center;align-items:center;
+        text-align:center;padding:24px 0 40px}
   .foot em{display:inline-block;font-style:normal;font-size:11.5px;color:#5c6879;
     letter-spacing:.2px;padding:5px 14px;border-radius:999px;
     background:rgba(255,255,255,.72);
