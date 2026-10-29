@@ -1689,7 +1689,7 @@ PAGE = r"""<!DOCTYPE html>
   .bgimg{position:fixed;inset:0;z-index:-1;pointer-events:none;
          background-position:center top;background-size:cover;background-repeat:no-repeat;
          transition:opacity .18s ease}
-  .wrap{max-width:720px;margin:0 auto;padding:0 20px;position:relative}
+  .wrap{max-width:620px;margin:0 auto;padding:0 20px;position:relative}
 
   /* ---------- 顶部 ---------- */
   .topbar{position:relative;padding:46px 0 24px}
@@ -1702,7 +1702,7 @@ PAGE = r"""<!DOCTYPE html>
   .bar{display:flex;align-items:center;gap:16px}
   .logo{width:56px;height:56px;border-radius:50%;flex:0 0 auto;
         box-shadow:0 6px 18px -6px rgba(31,90,255,.55)}
-  h1{font-size:24px;font-weight:700;letter-spacing:-.4px;margin:0;line-height:1.22}
+  h1{font-size:22px;font-weight:700;letter-spacing:-.3px;margin:0;line-height:1.22}
   .tagline{margin:7px 0 0;font-size:13px;color:#3d4a5e;letter-spacing:.1px}
 
   /* ---------- 深色壁纸：标题自动转白 ----------
