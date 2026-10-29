@@ -2593,8 +2593,29 @@ def open_output():
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e), 'path': OUTPUT}), 500
 
+def _port_busy(port=8765):
+    """8765 上是否已经有人在监听。用来避免重复起实例时报 WinError 10048 直接崩掉。"""
+    import socket
+    s = socket.socket()
+    s.settimeout(0.5)
+    try:
+        return s.connect_ex(('127.0.0.1', port)) == 0
+    finally:
+        try:
+            s.close()
+        except OSError:
+            pass
+
+
 if __name__ == '__main__':
-    if os.environ.get('OPEN_BROWSER') == '1':
+    # 只有最外层进程做占用检查；reloader 派生的子进程要照常 bind
+    if not os.environ.get('WERKZEUG_RUN_MAIN') and _port_busy():
+        print('8765 已被占用，说明服务已经在运行 —— 直接打开 http://127.0.0.1:8765 即可。')
+        sys.exit(0)
+    if os.environ.get('OPEN_BROWSER') == '1' and not os.environ.get('WERKZEUG_RUN_MAIN'):
         import threading, webbrowser
         threading.Timer(1.5, lambda: webbrowser.open('http://127.0.0.1:8765')).start()
-    app.run(host='127.0.0.1', port=8765, debug=False)
+    # use_reloader：改完 app.py 自动重启，不需要手工杀掉进程再起，
+    # 浏览器刷新一下就接上，中间只有不到 1 秒的空档。
+    app.run(host='127.0.0.1', port=8765, debug=False,
+            use_reloader=True, reloader_type='stat')
