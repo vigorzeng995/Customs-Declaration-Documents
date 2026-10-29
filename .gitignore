@@ -1,0 +1,20 @@
+# 真实业务数据：产品清单、ERP 编码、海关 HS 编码、历史单据
+master.xlsx
+HS对照表_待填.xlsx
+master_seed/
+uploads/
+output/
+
+# 备份 / 缓存 / 临时文件
+_bak/
+__pycache__/
+*.pyc
+*.log
+~$*
+.DS_Store
+Thumbs.db
+.venv/
+venv/
+
+# 本机配置（公司标识等，不入库）
+local_config.json
