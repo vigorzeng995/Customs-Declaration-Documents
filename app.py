@@ -4,7 +4,7 @@
 流程：上传深圳SO销售订单PDF → 解析(客户/报价号/商品编码/数量/单价) → 按ERP编码查HS对照表
       → 写入报关单(隐藏商品编码列，HS补入) → 子表(发票/箱单/合同/申报要素)公式自动联动
 """
-import os, re, json, sys, subprocess, shutil, zipfile, tempfile, datetime
+import os, re, json, sys, subprocess, shutil, zipfile, tempfile, datetime, mimetypes, io
 from urllib.parse import quote
 from flask import Flask, request, jsonify, send_file, send_from_directory, render_template_string, Response
 
@@ -1680,7 +1680,7 @@ PAGE = r"""<!DOCTYPE html>
   html,body{margin:0;overflow-x:hidden}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
-    background:var(--bg) url('/bg.webp') center top / cover no-repeat fixed;
+    background:var(--bg) url('__BG_URL__') center top / cover no-repeat fixed;
     color:var(--ink);
     min-height:100vh;
     -webkit-font-smoothing:antialiased;
@@ -1745,6 +1745,10 @@ PAGE = r"""<!DOCTYPE html>
   .btn-primary:hover{background:var(--blue-d)}
   .btn-primary:disabled{background:#bac8e6;box-shadow:none;cursor:not-allowed}
   .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  /* 外观卡片里的小勾选，保持与按钮同一行高度 */
+  .cbtoggle{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-2);
+            padding:9px 4px;cursor:pointer;user-select:none;white-space:nowrap}
+  .cbtoggle input{width:15px;height:15px;margin:0;accent-color:var(--blue);cursor:pointer}
 
   /* ---------- 拖拽区 ---------- */
   .drop{border:1.5px dashed #c9d6ea;border-radius:12px;padding:34px 20px;text-align:center;
@@ -1820,7 +1824,7 @@ PAGE = r"""<!DOCTYPE html>
 </head>
 <body>
 
-<img class="robot" src="/robot.webp" alt="" aria-hidden="true">
+<img class="robot" src="/robot.webp" alt="" aria-hidden="true" style="__ROBOT_STYLE__">
 
 <header class="topbar">
   <div class="wrap bar">
@@ -1848,6 +1852,28 @@ PAGE = r"""<!DOCTYPE html>
         上传已填对照表
         <input type="file" id="masterFile" accept=".xlsx"
                style="position:absolute;left:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer;">
+      </label>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>页面外观</h2>
+      <span class="badge__BG_CLASS__" id="bgStatus">__BG_TEXT__</span>
+    </div>
+    <p class="desc">
+      想换背景就上传一张自己的图片（JPG / PNG / WebP，≤ 12 MB），自动压缩并保存在本机，下次打开仍然有效。
+    </p>
+    <div class="actions">
+      <label class="btn btn-ghost">
+        选择背景图片
+        <input type="file" id="bgFile" accept="image/jpeg,image/png,image/webp,image/gif"
+               style="position:absolute;left:0;top:0;opacity:0;width:100%;height:100%;cursor:pointer;">
+      </label>
+      <button class="btn btn-ghost" id="bgReset" type="button">恢复默认背景</button>
+      <label class="cbtoggle" title="隐藏右下角的四足机器人">
+        <input type="checkbox" id="robotToggle"__ROBOT_CHECKED__>
+        <span>显示四足机器人</span>
       </label>
     </div>
   </section>
@@ -2017,6 +2043,61 @@ async function openOutput(){
     if(!d.ok) alert('无法自动打开，请手动前往：'+d.path);
   }catch(e){ alert('无法自动打开输出文件夹'); }
 }
+
+/* ================= 页面外观：自定义背景 / 机器人开关 ================= */
+const bgStatus=document.getElementById('bgStatus');
+const BG_MAX=12*1024*1024;
+
+function setBg(url){
+  if(!url) return;
+  document.body.style.backgroundImage="url('"+String(url).replace(/['"()\\\s]/g,'')+"')";
+}
+function bgBadge(cls,text){ bgStatus.className='badge'+(cls?' '+cls:''); bgStatus.textContent=text; }
+
+document.getElementById('bgFile').onchange=async e=>{
+  const f=e.target.files&&e.target.files[0];
+  if(!f) return;
+  if(!/^image\//.test(f.type||'')){
+    bgBadge('err','请选择图片（JPG / PNG / WebP）'); e.target.value=''; return;
+  }
+  if(f.size>BG_MAX){ bgBadge('err','图片太大（'+(f.size/1048576).toFixed(1)+' MB），请压到 12 MB 以内'); e.target.value=''; return; }
+  bgBadge('','正在处理图片…');
+  try{
+    const fd=new FormData(); fd.append('file',f);
+    const r=await toJson(await fetch('/appearance/background',{method:'POST',body:fd}).catch(()=>null));
+    if(r&&r.ok){
+      setBg(r.url);
+      bgBadge('ok','已换背景'+(r.w?('（'+r.w+'×'+r.h+'）'):''));
+    }else{
+      bgBadge('err','上传失败：'+((r&&r.error)||'未知错误'));
+    }
+  }catch(err){
+    bgBadge('err','上传失败：'+String(err&&err.message||err));
+  }finally{
+    e.target.value='';   // 清空，同一张图再选一次也能触发
+  }
+};
+
+document.getElementById('bgReset').onclick=async function(){
+  const btn=this; btn.disabled=true; bgBadge('','正在恢复…');
+  try{
+    const r=await toJson(await fetch('/appearance/background/reset',{method:'POST'}).catch(()=>null));
+    if(r&&r.ok){ setBg(r.url); bgBadge('','已恢复默认背景'); }
+    else{ bgBadge('err','恢复失败：'+((r&&r.error)||'未知错误')); }
+  }catch(err){
+    bgBadge('err','恢复失败：'+String(err&&err.message||err));
+  }finally{ btn.disabled=false; }
+};
+
+document.getElementById('robotToggle').onchange=async function(){
+  const on=this.checked;
+  document.querySelectorAll('.robot').forEach(el=>{ el.style.display=on?'':'none'; });
+  try{
+    const fd=new FormData(); fd.append('on',on?'1':'0');
+    const r=await toJson(await fetch('/appearance/robot',{method:'POST',body:fd}).catch(()=>null));
+    if(!r||!r.ok) bgBadge('err','开关没保存成功，下次打开会恢复原状态');
+  }catch(err){}
+};
 </script>
 </body>
 </html>
@@ -2036,6 +2117,190 @@ LOGO = os.path.join(BASE, 'logo.png')
 BACKDROP = os.path.join(BASE, 'bg-sky.webp')
 ROBOT = os.path.join(BASE, 'robot.webp')
 
+# ---------- 外观（自定义背景 / 机器人开关） ----------
+# 单独存 appearance.json，不去动 local_config.json，互不影响：写坏了也只丢外观设置。
+LOOK_FILE = os.path.join(BASE, 'appearance.json')
+LOOK_KEYS = ('bg', 'robot')
+BG_EXTS = ('.webp', '.jpg', '.jpeg', '.png', '.gif')
+BG_MAX_IN = 12 * 1024 * 1024        # 允许上传的原始大小
+BG_MAX_PX = 60 * 1024 * 1024        # 像素总量上限，防「解压炸弹」
+BG_MAX_SIDE = 2560                  # 落盘时长边上限（铺满屏幕足够，体积可控）
+
+
+def _look():
+    """读外观配置。文件缺失、JSON 损坏、字段非法一律退回默认值，绝不影响页面打开。"""
+    d = {'bg': '', 'robot': True}
+    try:
+        if os.path.exists(LOOK_FILE):
+            raw = json.load(open(LOOK_FILE, encoding='utf-8'))
+            if isinstance(raw, dict):
+                bg = raw.get('bg')
+                d['bg'] = bg if _bg_name_ok(bg) else ''
+                rb = raw.get('robot')
+                d['robot'] = rb if isinstance(rb, bool) else True
+    except Exception:
+        pass
+    return d
+
+
+def _look_set(**kw):
+    """合并写回外观配置（tmp + 原子替换）。失败只记日志、不抛异常。"""
+    d = _look()
+    for k, v in kw.items():
+        if k in LOOK_KEYS:
+            d[k] = v
+    try:
+        tmp = LOOK_FILE + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            json.dump(d, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, LOOK_FILE)
+        return True
+    except Exception:
+        app.logger.exception('保存外观配置失败')
+        return False
+
+
+def _bg_name_ok(n):
+    """只接受 BASE 目录下的纯文件名（挡掉 ../ 之类的路径穿越）。"""
+    return (isinstance(n, str) and n and len(n) <= 64
+            and n == os.path.basename(n) and '\x00' not in n
+            and n.lower().endswith(BG_EXTS))
+
+
+def _bg_custom_path():
+    n = _look().get('bg') or ''
+    if not _bg_name_ok(n):
+        return ''
+    p = os.path.join(BASE, n)
+    return p if os.path.isfile(p) else ''
+
+
+def _bg_path():
+    """当前生效的背景：自定义优先，缺失时自动退回内置默认图。"""
+    p = _bg_custom_path()
+    if p:
+        return p
+    return BACKDROP if os.path.isfile(BACKDROP) else ''
+
+
+def _bg_url():
+    p = _bg_path()
+    if not p:
+        return '/bg.webp'
+    try:
+        v = int(os.path.getmtime(p))
+    except OSError:
+        v = 0
+    return '/bg.webp?v=%d' % v
+
+
+# 上次中途退出可能留下半成品临时文件，启动时清掉
+for _f in os.listdir(BASE):
+    if _f.startswith('_bg_tmp_'):
+        try:
+            os.remove(os.path.join(BASE, _f))
+        except OSError:
+            pass
+
+
+def _sniff_image(data):
+    """按文件头判断真实图片类型，不信扩展名和 Content-Type。"""
+    if data[:3] == b'\xff\xd8\xff':
+        return 'jpg'
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'png'
+    if data[:6] in (b'GIF87a', b'GIF89a'):
+        return 'gif'
+    if len(data) > 12 and data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'webp'
+    if b'<svg' in data[:600].lower():
+        return 'svg'
+    return ''
+
+
+def _save_bg_bytes(data):
+    """校验 + 规整 + 原子落盘。返回 (ok, dict|错误文案)。
+
+    任何一步失败都保证：旧背景与旧配置原封不动可用。
+    """
+    kind = _sniff_image(data)
+    if not kind:
+        return False, '这不是图片文件（支持 JPG / PNG / WebP / GIF）'
+    if kind == 'svg':
+        return False, '暂不支持 SVG，请用 JPG 或 PNG'
+
+    uid = datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')
+    info = {}
+    tmp = ''
+    try:
+        from PIL import Image, ImageOps
+        Lanczos = getattr(getattr(Image, 'Resampling', Image), 'LANCZOS')
+        im = Image.open(io.BytesIO(data))
+        w0, h0 = im.size
+        if w0 * h0 > BG_MAX_PX:
+            return False, '图片像素过大（%d×%d），请压缩到 6000 万像素以内' % (w0, h0)
+        im.load()
+        try:
+            im = ImageOps.exif_transpose(im) or im
+        except Exception:
+            pass
+        if im.mode in ('RGBA', 'LA', 'P'):
+            im = im.convert('RGBA')
+            flat = Image.new('RGB', im.size, (255, 255, 255))   # 透明处补白，避免变黑块
+            flat.paste(im, mask=im.split()[-1])
+            im = flat
+        elif im.mode != 'RGB':
+            im = im.convert('RGB')
+        if max(im.size) > BG_MAX_SIDE:
+            im.thumbnail((BG_MAX_SIDE, BG_MAX_SIDE), Lanczos)
+        name = 'custom_bg.webp'
+        tmp = os.path.join(BASE, '_bg_tmp_%s.webp' % uid)
+        im.save(tmp, format='WEBP', quality=82, method=4)
+        info.update(w=im.size[0], h=im.size[1])
+    except ImportError:
+        # 没装 Pillow 也能用：原图直接存，按嗅探到的真实类型定扩展名
+        ext = '.' + kind
+        name = 'custom_bg' + ext
+        tmp = os.path.join(BASE, '_bg_tmp_%s%s' % (uid, ext))
+        try:
+            with open(tmp, 'wb') as fh:
+                fh.write(data)
+        except Exception as e:
+            return False, '保存图片失败：%s' % e
+        info.update(w=0, h=0)
+    except Exception as e:
+        if tmp:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        detail = re.sub(r'<[^>]*>', '', str(e))[:60].strip()   # 去掉 <_io.BytesIO at 0x..> 这类内部描述
+        return False, '图片无法解析，可能已损坏或格式不支持' + ('（%s）' % detail if detail else '')
+
+    dst = os.path.join(BASE, name)
+    try:
+        os.replace(tmp, dst)                       # 原子替换，不会出现写了一半的图
+    except Exception as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False, '保存图片失败：%s' % e
+
+    # 清掉旧扩展名的自定义背景，避免 BASE 里堆垃圾
+    for f in os.listdir(BASE):
+        if f.startswith('custom_bg.') and f != name:
+            try:
+                os.remove(os.path.join(BASE, f))
+            except OSError:
+                pass
+
+    if not _look_set(bg=name):
+        return False, '图片已保存，但外观配置写入失败，请检查目录权限'
+    info['bytes'] = os.path.getsize(dst)
+    info['url'] = _bg_url()
+    return True, info
+
 
 @app.route('/logo.png')
 def logo_file():
@@ -2054,7 +2319,65 @@ def _send_webp(path):
 
 @app.route('/bg.webp')
 def bg_file():
-    return _send_webp(BACKDROP)
+    """背景图。自定义的可能是 jpg/png，按真实类型给 Content-Type，否则浏览器不显示。"""
+    p = _bg_path()
+    if not p:
+        return '', 404
+    try:
+        mt = mimetypes.guess_type(p)[0] or 'image/webp'
+        r = send_file(p, mimetype=mt, conditional=True)
+        r.headers['Cache-Control'] = 'no-cache'      # 换背景后刷新即可生效
+        return r
+    except Exception:
+        app.logger.exception('读取背景图失败')
+        return '', 404
+
+
+@app.route('/appearance/state')
+def appearance_state():
+    d = _look()
+    return jsonify({'ok': True, 'custom': bool(_bg_custom_path()),
+                    'robot': d['robot'], 'url': _bg_url()})
+
+
+@app.route('/appearance/background', methods=['POST'])
+def appearance_bg():
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'ok': False, 'error': '没有收到图片，请重新选择'})
+    try:
+        data = f.read()
+    except Exception as e:
+        return jsonify({'ok': False, 'error': '读取上传内容失败：%s' % e})
+    if not data:
+        return jsonify({'ok': False, 'error': '文件是空的'})
+    if len(data) > BG_MAX_IN:
+        return jsonify({'ok': False, 'error': '图片太大（%.1f MB），请压到 12 MB 以内'
+                        % (len(data) / 1048576.0)})
+    ok, info = _save_bg_bytes(data)
+    if not ok:
+        return jsonify({'ok': False, 'error': info})
+    return jsonify(dict(ok=True, **info))
+
+
+@app.route('/appearance/background/reset', methods=['POST'])
+def appearance_bg_reset():
+    for f in os.listdir(BASE):
+        if f.startswith('custom_bg.') or f.startswith('_bg_tmp_'):
+            try:
+                os.remove(os.path.join(BASE, f))
+            except OSError:
+                pass
+    _look_set(bg='')
+    return jsonify({'ok': True, 'url': _bg_url()})
+
+
+@app.route('/appearance/robot', methods=['POST'])
+def appearance_robot():
+    on = (request.form.get('on') or '').lower() in ('1', 'true', 'yes', 'on')
+    if not _look_set(robot=on):
+        return jsonify({'ok': False, 'error': '保存设置失败，请检查目录权限'})
+    return jsonify({'ok': True, 'robot': on})
 
 
 @app.route('/robot.webp')
@@ -2064,7 +2387,15 @@ def robot_file():
 
 @app.route('/')
 def index():
-    return render_template_string(PAGE)
+    look = _look()
+    robot = look['robot']
+    custom = bool(_bg_custom_path())
+    page = (PAGE.replace('__BG_URL__', _bg_url())
+                .replace('__ROBOT_STYLE__', '' if robot else 'display:none')
+                .replace('__ROBOT_CHECKED__', ' checked' if robot else '')
+                .replace('__BG_CLASS__', ' ok' if custom else '')
+                .replace('__BG_TEXT__', '使用自定义背景' if custom else '默认背景'))
+    return page
 
 @app.route('/master/export')
 def master_export():
@@ -2103,9 +2434,11 @@ def _check_master_xlsx(path):
 def _json_errors(e):
     """接口一律回 JSON，避免前端拿到 HTML 报「Unexpected token '<'」。"""
     from werkzeug.exceptions import HTTPException
-    api = request.path.startswith(('/parse', '/generate', '/master', '/open_output'))
+    api = request.path.startswith(('/parse', '/generate', '/master', '/open_output', '/appearance'))
     if isinstance(e, HTTPException):
         if api:
+            if e.code == 413:
+                return jsonify({'ok': False, 'error': '图片太大，请压到 12 MB 以内再上传'}), 413
             return jsonify({'ok': False, 'error': '%s %s' % (e.code, e.name)}), e.code
         return e
     app.logger.exception(e)

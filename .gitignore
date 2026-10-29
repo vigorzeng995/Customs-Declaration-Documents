@@ -18,3 +18,8 @@ venv/
 
 # 本机配置（公司标识等，不入库）
 local_config.json
+
+# 自定义背景 / 外观设置（本机）
+custom_bg.*
+appearance.json
+_bg_tmp_*

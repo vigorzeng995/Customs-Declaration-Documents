@@ -50,6 +50,20 @@ Then open <http://127.0.0.1:8765>.
 
 On Windows you can also double-click `启动.bat` (starts the server and opens the browser).
 
+## Changing the background
+
+The **页面外观** card on the page lets you use your own picture as the background
+(JPG / PNG / WebP / GIF, up to 12 MB), and hide or show the robot in the corner.
+
+- The image is never sent anywhere: it is validated by its real file signature (not the
+  extension), auto-rotated by EXIF, capped at 2560 px on the long side, flattened onto
+  white if it has transparency, and stored as `custom_bg.webp` next to `app.py`.
+- The choice is remembered in `appearance.json` (both git-ignored, both local only).
+- **恢复默认背景** deletes them and returns to `bg-sky.webp`.
+- Bad input (not an image, truncated file, >12 MB, >60 megapixels, SVG) is rejected with a
+  readable message and leaves the previous background untouched.
+- Pillow is optional: without it the file is stored as-is instead of being compressed.
+
 ## Data files
 
 Two workbooks drive the logic. Real ones are **git-ignored** — this repo ships sanitized
@@ -92,6 +106,8 @@ HS对照表_待填.example.xlsx      Sanitized lookup sample (9 columns)
 logo.png                      Brand mark shown in the page header (swap for your own)
 bg-sky.webp                   Background gradient behind the page (optional)
 robot.webp                    Robot cut-out pinned to the bottom-right corner (optional)
+custom_bg.webp                User-uploaded background, created at runtime (git-ignored)
+appearance.json               Background / robot preference, created at runtime (git-ignored)
 启动.bat                       Windows one-click launcher
 requirements.txt
 ```
