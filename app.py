@@ -1689,15 +1689,15 @@ PAGE = r"""<!DOCTYPE html>
   .bgimg{position:fixed;inset:0;z-index:-1;pointer-events:none;
          background-position:center top;background-size:cover;background-repeat:no-repeat;
          transition:opacity .18s ease}
-  .wrap{max-width:860px;margin:0 auto;padding:0 20px;position:relative}
+  .wrap{max-width:720px;margin:0 auto;padding:0 20px;position:relative}
 
   /* ---------- 顶部 ---------- */
-  .topbar{position:relative;padding:54px 0 30px}
-  /* 顶部柔光：自定义背景上垫一层白，保证标题与副标题始终可读；
-     贴住标题区自身宽度、不做横向溢出，避免撑出横向滚动条 */
-  .topbar::before{content:'';position:absolute;inset:-24px 0 0;pointer-events:none;
-    background:linear-gradient(180deg,rgba(255,255,255,.92) 0%,
-               rgba(255,255,255,.72) 46%,rgba(255,255,255,0) 100%)}
+  .topbar{position:relative;padding:46px 0 24px}
+  /* 顶部柔光只做「让标题压得住背景」这一件事，浓度比之前收了一半，
+     有背景图时也能清楚看到图本身，不会像一块白斑 */
+  .topbar::before{content:'';position:absolute;inset:-22px 0 0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,.55) 0%,
+               rgba(255,255,255,.30) 40%,rgba(255,255,255,0) 100%)}
   .bar{position:relative}
   .bar{display:flex;align-items:center;gap:16px}
   .logo{width:56px;height:56px;border-radius:50%;flex:0 0 auto;
@@ -1706,9 +1706,9 @@ PAGE = r"""<!DOCTYPE html>
   .tagline{margin:7px 0 0;font-size:13px;color:#3d4a5e;letter-spacing:.1px}
 
   /* ---------- 卡片 ---------- */
-  .card{background:rgba(255,255,255,.86);
-        -webkit-backdrop-filter:blur(16px) saturate(1.2);
-        backdrop-filter:blur(16px) saturate(1.2);
+  .card{background:rgba(255,255,255,.84);
+        -webkit-backdrop-filter:blur(11px) saturate(1.1);
+        backdrop-filter:blur(11px) saturate(1.1);
         /* 白底上要看得见卡片轮廓，所以边框用极浅的墨色；有背景图时同样成立 */
         border:1px solid rgba(15,23,42,.07);border-radius:var(--r);
         padding:22px 24px;margin-bottom:16px;
